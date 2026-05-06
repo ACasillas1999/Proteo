@@ -1,0 +1,18 @@
+{
+  "articulo": {
+    "BrandId": 1,
+    "SubBrandId": 1,
+    "LineId": 1,
+    "categories": {
+      "MAT": 1,
+      "SERV": 2,
+      "NLAG": 3,
+      "HALB": 4,
+      "HAWA": 5,
+      "FERT": 6,
+      "VERP": 7,
+      "ROH": 8
+    },
+    "defaultCategoryId": 1
+  }
+}
