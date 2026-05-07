@@ -1,17 +1,20 @@
 'use strict';
-const fs   = require('fs');
-const path = require('path');
-const { query } = require('../db');
-const ps        = require('../powersales');
+const { query }          = require('../db');
+const ps                 = require('../powersales');
+const { getFieldMapping, getConfig } = require('../localdb');
 
-const MAPEO_FILE = path.join(__dirname, '..', '..', 'mapeo.json');
-
-function getMapeo() {
-  try {
-    return JSON.parse(fs.readFileSync(MAPEO_FILE, 'utf-8')).articulo ?? {};
-  } catch {
-    return {};
-  }
+/**
+ * Lee el mapeo desde proteo_db (field_mapping + app_config).
+ * Fallback: valores por defecto si la BD no tiene datos.
+ */
+async function getMapeo() {
+  const fieldMap   = await getFieldMapping('articulo');
+  const categories = await getConfig('articulo_categories', {
+    MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
+    HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
+  });
+  const defaultCategoryId = await getConfig('articulo_defaultCategoryId', 1);
+  return { fieldMap, categories, defaultCategoryId };
 }
 
 /**
@@ -54,8 +57,8 @@ const PS_FIELDS = [
   { field: 'IsDecimal',       type: 'fixed',      required: false, label: 'Es decimal',            fixedValue: 0 },
 ];
 
-function mapArticulo(row) {
-  const m = getMapeo();
+async function mapArticulo(row) {
+  const m = await getMapeo();
   const fieldMap = m.fieldMap ?? {};
   const clasificacion = (row.Clasificacion ?? '').trim().toUpperCase();
   const categoryId    = (m.categories?.[clasificacion]) ?? m.defaultCategoryId ?? 1;
@@ -70,7 +73,7 @@ function mapArticulo(row) {
     } else if (type === 'fixedId') {
       // El usuario puede haber sobreescrito el ID en fieldMap como número
       const val = fieldMap[field];
-      payload[field] = val !== undefined ? parseInt(val) : (m[field] ?? defaultFixed ?? 1);
+      payload[field] = val !== undefined ? parseInt(val) : (defaultFixed ?? 1);
     } else if (type === 'categoryId') {
       payload[field] = categoryId;
     } else {
@@ -98,7 +101,7 @@ async function sync(cambio) {
   );
   if (!rows.length) throw new Error(`Artículo '${clave_registro}' no encontrado en ERP`);
 
-  const payload = mapArticulo(rows[0]);
+  const payload = await mapArticulo(rows[0]);
 
   let exists = false;
   try {

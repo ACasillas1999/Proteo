@@ -1,49 +1,38 @@
 'use strict';
 const router = require('express').Router();
-const fs     = require('fs');
-const path   = require('path');
 const ps     = require('../src/powersales');
+const {
+  getFieldMapping, saveFieldMapping,
+  getConfig, setConfig,
+} = require('../src/localdb');
 
-const MAPEO_FILE = path.join(__dirname, '..', 'mapeo.json');
-
-// Mapeo por defecto
-const DEFAULT_MAPEO = {
-  articulo: {
-    BrandId:    1,
-    SubBrandId: 1,
-    LineId:     1,
-    BranchId:   1,
-    categories: {
+// GET /api/mapeo — lee el mapeo actual desde proteo_db
+router.get('/', async (_req, res) => {
+  try {
+    const fieldMap          = await getFieldMapping('articulo');
+    const categories        = await getConfig('articulo_categories', {
       MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
       HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
-    },
-    defaultCategoryId: 1,
-  },
-};
+    });
+    const defaultCategoryId = await getConfig('articulo_defaultCategoryId', 1);
 
-function readMapeo() {
-  try {
-    return JSON.parse(fs.readFileSync(MAPEO_FILE, 'utf-8'));
-  } catch {
-    return DEFAULT_MAPEO;
+    res.json({ ok: true, data: { articulo: { fieldMap, categories, defaultCategoryId } } });
+  } catch (err) {
+    console.error('[MAPEO GET] ERROR:', err);
+    res.status(500).json({ ok: false, error: err.message, stack: err.stack });
   }
-}
-
-function writeMapeo(data) {
-  fs.writeFileSync(MAPEO_FILE, JSON.stringify(data, null, 2), 'utf-8');
-}
-
-// GET /api/mapeo — lee el mapeo actual
-router.get('/', (_req, res) => {
-  res.json({ ok: true, data: readMapeo() });
 });
 
-// PUT /api/mapeo — guarda el mapeo
-router.put('/', (req, res) => {
+// PUT /api/mapeo — guarda el mapeo en proteo_db
+router.put('/', async (req, res) => {
   try {
-    const incoming = req.body;
-    writeMapeo(incoming);
-    // Recarga el handler con nuevo mapeo
+    const incoming = req.body;                        // { articulo: { fieldMap, categories, defaultCategoryId } }
+    const art = incoming.articulo ?? {};
+
+    if (art.fieldMap)          await saveFieldMapping('articulo', art.fieldMap);
+    if (art.categories)        await setConfig('articulo_categories', art.categories);
+    if (art.defaultCategoryId) await setConfig('articulo_defaultCategoryId', art.defaultCategoryId);
+
     res.json({ ok: true, data: incoming });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -61,7 +50,6 @@ router.get('/fields', async (_req, res) => {
     erpColumns = rows.map(r => r.Field);
   } catch { /* DB no disponible */ }
 
-  // PS_FIELDS es un array — lo pasamos directo
   res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
 });
 

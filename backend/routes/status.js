@@ -21,7 +21,7 @@ router.get('/', async (_req, res) => {
         SUM(sincronizado = 0) AS pendiente,
         SUM(sincronizado = 1) AS ok,
         SUM(sincronizado = 2) AS error,
-        SUM(sincronizado = 1 AND DATE(fecha_sync) = CURDATE()) AS hoy
+        SUM(sincronizado = 1 AND DATE(CONVERT_TZ(fecha_cambio, '+00:00', '-06:00')) = CURDATE()) AS hoy
       FROM Cambios
     `);
     const r = rows[0] || {};

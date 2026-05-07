@@ -1,5 +1,5 @@
 'use strict';
-const { query }                        = require('./db');
+const { query, markSynced, markError }      = require('./db');
 const { saveSyncHistory }              = require('./localdb');
 const { broadcast }                    = require('./websocket');
 const config                           = require('./config');
@@ -50,7 +50,9 @@ async function processChange(cambioId) {
   try {
     const [rows] = await query('SELECT * FROM Cambios WHERE id=? LIMIT 1', [cambioId]);
     if (!rows.length) {
-      console.warn(`[PROC] Cambio #${cambioId} no encontrado en BD`);
+      console.warn(`[PROC] Cambio #${cambioId} no encontrado en BD (puede haberse procesado ya), saltando.`);
+      // Marcar como procesado por si acaso
+      await markSynced(cambioId).catch(() => {});
       return;
     }
     cambio = rows[0];
@@ -63,15 +65,14 @@ async function processChange(cambioId) {
 
   if (!config.isTablaActiva(tabla)) {
     console.log(`[PROC] Tabla '${tabla}' inactiva, omitiendo #${cambioId}`);
-    // Aun así lo eliminamos para no bloquear la tabla remota
-    await query('DELETE FROM Cambios WHERE id=?', [cambioId]).catch(() => {});
+    await markSynced(cambioId).catch(() => {});
     return;
   }
 
   const handler = HANDLERS[tabla];
   if (!handler) {
-    console.warn(`[PROC] Sin handler para tabla '${tabla}', eliminando cambio #${cambioId}`);
-    await query('DELETE FROM Cambios WHERE id=?', [cambioId]).catch(() => {});
+    console.warn(`[PROC] Sin handler para tabla '${tabla}', marcando #${cambioId} como procesado`);
+    await markSynced(cambioId).catch(() => {});
     return;
   }
 
@@ -91,9 +92,9 @@ async function processChange(cambioId) {
         console.error('[PROC] Error guardando historial local:', e.message)
       );
 
-      // 4. Borrar de la tabla remota Cambios
-      await query('DELETE FROM Cambios WHERE id=?', [cambioId]).catch(e =>
-        console.error('[PROC] Error eliminando cambio remoto:', e.message)
+      // 4. Marcar como sincronizado con fecha_sync
+      await markSynced(cambioId).catch(e =>
+        console.error('[PROC] Error marcando cambio remoto:', e.message)
       );
 
       _state.processed++;
@@ -121,9 +122,9 @@ async function processChange(cambioId) {
     console.error('[PROC] Error guardando historial de error:', e.message)
   );
 
-  // Borrar igualmente para no bloquear la tabla; el historial ya tiene el error
-  await query('DELETE FROM Cambios WHERE id=?', [cambioId]).catch(e =>
-    console.error('[PROC] Error eliminando cambio remoto fallido:', e.message)
+  // Marcar con error y guardar fecha_sync
+  await markError(cambioId, lastError).catch(e =>
+    console.error('[PROC] Error marcando cambio remoto fallido:', e.message)
   );
 
   console.error(`[PROC] ✗ #${cambioId} falló tras ${cfg.max_retries} intentos: ${lastError}`);
@@ -133,12 +134,26 @@ async function processChange(cambioId) {
 let _pollerTimer = null;
 let _isPolling   = false;
 
+// Timeout de seguridad: si una vuelta del poller tarda mas de este tiempo, se libera el lock
+const POLL_TIMEOUT_MS = 90_000;
+
 async function pollPendingChanges() {
   if (_isPolling || config.isPaused()) return;
   _isPolling = true;
+
+  // Guardián: si en 90s la función no termina, liberar el lock para no bloquear la cola
+  const safetyTimer = setTimeout(() => {
+    console.warn('[POLLER] ⚠ Timeout de seguridad alcanzado (90s), liberando lock.');
+    _isPolling = false;
+  }, POLL_TIMEOUT_MS);
+
   try {
     // Leer solo los pendientes (sincronizado = 0) del remoto
     const [rows] = await query('SELECT id FROM Cambios WHERE sincronizado = 0 ORDER BY id ASC LIMIT 10');
+    // sincronizado: 0=pendiente, 1=ok, 2=error
+    if (rows.length > 0) {
+      console.log(`[POLLER] ${rows.length} registro(s) pendiente(s): ${rows.map(r => '#' + r.id).join(', ')}`);
+    }
     for (const row of rows) {
       if (config.isPaused()) break;
       await processChange(row.id);
@@ -146,6 +161,7 @@ async function pollPendingChanges() {
   } catch (err) {
     console.error('[POLLER] Error:', err.message);
   } finally {
+    clearTimeout(safetyTimer);
     _isPolling = false;
   }
 }

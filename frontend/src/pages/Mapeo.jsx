@@ -22,8 +22,29 @@ export default function Mapeo() {
       axios.get('/api/mapeo'),
       axios.get('/api/mapeo/fields'),
     ]).then(([m, f]) => {
-      setMapeo(m.data.data);
-      setFields({ psFields: f.data.psFields ?? [], erpColumns: f.data.erpColumns ?? [] });
+      const psFields      = f.data.psFields ?? [];
+      const savedFieldMap = m.data.data?.articulo?.fieldMap ?? {};
+
+      // Pre-inicializar con defaults del código, luego sobrescribir con lo guardado en BD
+      const initialFieldMap = {};
+      for (const def of psFields) {
+        if (def.type === 'fixed') continue; // campos de sistema, no se mapean
+        if (def.type === 'text' || def.type === 'number' || def.type === 'boolean') {
+          initialFieldMap[def.field] = savedFieldMap[def.field] !== undefined
+            ? savedFieldMap[def.field]
+            : (def.defaultErp ?? '');
+        } else if (def.type === 'fixedId' || def.type === 'categoryId') {
+          initialFieldMap[def.field] = savedFieldMap[def.field] !== undefined
+            ? savedFieldMap[def.field]
+            : (def.defaultFixed ?? 1);
+        }
+      }
+
+      setMapeo({
+        ...m.data.data,
+        articulo: { ...m.data.data?.articulo, fieldMap: initialFieldMap },
+      });
+      setFields({ psFields, erpColumns: f.data.erpColumns ?? [] });
     }).finally(() => setLoading(false));
   }, []);
 

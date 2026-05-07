@@ -10,7 +10,19 @@ const ESTADO_MAP = {
 
 function fmtDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+  let date;
+  if (d instanceof Date) {
+    // mysql2 ya devuelve Date objects en UTC
+    date = d;
+  } else if (typeof d === 'string') {
+    // String tipo "2026-05-06 03:25:00" → añadir Z para tratar como UTC
+    const s = d.includes('T') ? d : d.replace(' ', 'T');
+    date = new Date(s.endsWith('Z') ? s : s + 'Z');
+  } else {
+    date = new Date(d);
+  }
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export default function Auditoria() {

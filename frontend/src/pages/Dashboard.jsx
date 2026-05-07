@@ -7,15 +7,23 @@ import LiveFeed  from '../components/LiveFeed.jsx';
 function buildChartData(cambios) {
   const buckets = {};
   const now = new Date();
-  // init 24 buckets
+  // init 24 buckets con hora local
   for (let i = 23; i >= 0; i--) {
     const h = new Date(now - i * 3600_000);
     const key = `${String(h.getHours()).padStart(2,'0')}:00`;
     buckets[key] = { hora: key, ok: 0, error: 0 };
   }
   for (const c of cambios) {
-    const d = new Date(c.fecha_sync || c.fecha_cambio);
-    const key = `${String(d.getHours()).padStart(2,'0')}:00`;
+    // MySQL devuelve "2026-05-06 10:00:00" sin timezone → JS lo toma como LOCAL
+    // Compensamos: si el string no tiene 'T' ni 'Z', es UTC del servidor → ajustar a UTC-6
+    const raw = c.fecha_sync || c.fecha_cambio;
+    if (!raw) continue;
+    // Convertir a Date: strings tipo "YYYY-MM-DD HH:mm:ss" → tratamos como UTC
+    const utcStr = raw.toString().replace(' ', 'T') + 'Z';
+    const d = new Date(utcStr);
+    // Aplicar offset UTC-6 (hora de México)
+    const localHour = (d.getUTCHours() - 6 + 24) % 24;
+    const key = `${String(localHour).padStart(2,'0')}:00`;
     if (buckets[key]) {
       if (c.sincronizado === 1) buckets[key].ok++;
       if (c.sincronizado === 2) buckets[key].error++;

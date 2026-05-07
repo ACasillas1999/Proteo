@@ -6,15 +6,18 @@ let _pool = null;
 function getPool() {
   if (!_pool) {
     _pool = mysql.createPool({
-      host:             process.env.MYSQL_HOST,
-      port:             parseInt(process.env.MYSQL_PORT) || 3306,
-      database:         process.env.MYSQL_DB,
-      user:             process.env.MYSQL_USER,
-      password:         process.env.MYSQL_PASS || '',
+      host:               process.env.MYSQL_HOST,
+      port:               parseInt(process.env.MYSQL_PORT) || 3306,
+      database:           process.env.MYSQL_DB,
+      user:               process.env.MYSQL_USER,
+      password:           process.env.MYSQL_PASS || '',
       waitForConnections: true,
-      connectionLimit:  10,
-      queueLimit:       0,
-      timezone:         '+00:00',
+      connectionLimit:    10,
+      queueLimit:         0,
+      timezone:           '-06:00',  // ERP guarda datetimes en hora local (UTC-6 México)
+      connectTimeout:     10_000,   // 10s timeout de conexión TCP
+      enableKeepAlive:    true,
+      keepAliveInitialDelay: 30_000,
     });
     
     // Probar conexión de inmediato

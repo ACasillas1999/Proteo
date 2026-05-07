@@ -35,9 +35,9 @@ async function migrate() {
   try {
     await conn.query(`
       CREATE TABLE IF NOT EXISTS app_config (
-        \`key\`      VARCHAR(100) NOT NULL PRIMARY KEY,
-        \`value\`    TEXT,
-        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        \`key\`          VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`config_value\` TEXT,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -82,24 +82,24 @@ async function migrate() {
 // ── Helpers de config ────────────────────────────────────────────────────────
 
 async function getConfig(key, defaultVal = null) {
-  const [rows] = await localQuery('SELECT `value` FROM app_config WHERE `key` = ?', [key]);
+  const [rows] = await localQuery('SELECT `config_value` FROM app_config WHERE `key` = ?', [key]);
   if (!rows.length) return defaultVal;
-  try { return JSON.parse(rows[0].value); } catch { return rows[0].value; }
+  try { return JSON.parse(rows[0].config_value); } catch { return rows[0].config_value; }
 }
 
 async function setConfig(key, value) {
   const v = typeof value === 'string' ? value : JSON.stringify(value);
   await localQuery(
-    'INSERT INTO app_config (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+    'INSERT INTO app_config (`key`, `config_value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`)',
     [key, v]
   );
 }
 
 async function getAllConfig() {
-  const [rows] = await localQuery('SELECT `key`, `value` FROM app_config');
+  const [rows] = await localQuery('SELECT `key`, `config_value` FROM app_config');
   const out = {};
   for (const r of rows) {
-    try { out[r.key] = JSON.parse(r.value); } catch { out[r.key] = r.value; }
+    try { out[r.key] = JSON.parse(r.config_value); } catch { out[r.key] = r.config_value; }
   }
   return out;
 }

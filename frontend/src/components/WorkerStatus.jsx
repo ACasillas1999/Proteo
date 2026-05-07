@@ -11,14 +11,12 @@ export default function WorkerStatus({ wsEvents, wsStatus }) {
     } catch { /* ignore */ }
   }, []);
 
-  // Poll every 10s
   useEffect(() => {
     fetchStatus();
     const t = setInterval(fetchStatus, 10_000);
     return () => clearInterval(t);
   }, [fetchStatus]);
 
-  // Update paused state from WebSocket events
   useEffect(() => {
     const last = wsEvents.find(e => e.event === 'worker_status');
     if (last) setWorker(prev => ({ ...prev, ...last.data }));
