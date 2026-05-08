@@ -81,7 +81,7 @@ export default function Mapeo() {
           placeholder="🔍 Filtrar campos…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          style={{ flex: 1, minWidth: 180, maxWidth: 280 }}
+          style={{ flex: 1, minWidth: 180, maxWidth: 280, borderRadius: 'var(--radius)' }}
         />
         <button className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} onClick={save}>
           {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
@@ -126,7 +126,7 @@ export default function Mapeo() {
               } else if (type === 'fixedId' || type === 'categoryId') {
                 const cur = fieldMap[field] !== undefined ? fieldMap[field] : (art[field] ?? defaultFixed ?? 1);
                 control = (
-                  <input type="number" min={1} style={{ width: 100 }}
+                  <input type="number" min={1} style={{ width: 100, borderRadius: 'var(--radius-sm)' }}
                     value={cur}
                     onChange={e => setFieldMapVal(field, parseInt(e.target.value) || 1)} />
                 );
@@ -134,7 +134,7 @@ export default function Mapeo() {
                 const cur = fieldMap[field] !== undefined ? fieldMap[field] : (defaultErp ?? '');
                 control = (
                   <select value={cur} onChange={e => setFieldMapVal(field, e.target.value)}
-                    style={{ width: '100%', maxWidth: 300 }}>
+                    style={{ width: '100%', maxWidth: 300, borderRadius: 'var(--radius-sm)' }}>
                     <option value="">(sin mapear — vacío)</option>
                     {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
                   </select>
