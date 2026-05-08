@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#00ff88"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#0d0d1a"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo redondeado oscuro -->
+  <rect width="32" height="32" rx="8" fill="url(#bg)"/>
+
+  <!-- Símbolo: P estilizada con gradiente -->
+  <text
+    x="16" y="23"
+    text-anchor="middle"
+    font-family="'Inter', system-ui, sans-serif"
+    font-weight="700"
+    font-size="21"
+    fill="url(#g)"
+  >P</text>
+
+  <!-- Punto de acento (sync dot) -->
+  <circle cx="24" cy="8" r="3.5" fill="#00ff88" opacity="0.9"/>
+</svg>
