@@ -24,7 +24,8 @@ async function getMapeo() {
  *   'number'  → columna ERP (parseFloat)
  *   'boolean' → columna ERP (1/0)
  *   'fixed'   → valor constante, no editable por usuario
- *   'fixedId' → número entero configurable por usuario (BrandId, LineId, etc.)
+ *   'fixedId'   → número entero configurable por usuario (LineId, etc.)
+ *   'skuPrefix' → primeros N caracteres del SKU (Clave_Articulo)
  *   'categoryId' → se resuelve por mapa Clasificacion→Id
  */
 const PS_FIELDS = [
@@ -45,7 +46,7 @@ const PS_FIELDS = [
   { field: 'ProductCode',     type: 'text',       required: false, label: 'Código de producto',    defaultErp: 'Clave_Articulo' },
   { field: 'LoyaltyPct',      type: 'number',     required: false, label: '% Lealtad',             defaultErp: null },
   // Campos de catálogo — ID numérico fijo o mapeado
-  { field: 'BrandId',         type: 'fixedId',    required: true,  label: 'ID Marca',              defaultFixed: 1 },
+  { field: 'BrandId',         type: 'skuPrefix',  required: true,  label: 'ID Marca (línea SKU)', prefixLen: 5 },
   { field: 'SubBrandId',      type: 'fixedId',    required: true,  label: 'ID Sub-marca',          defaultFixed: 1 },
   { field: 'LineId',          type: 'fixedId',    required: true,  label: 'ID Línea',              defaultFixed: 1 },
   { field: 'BranchId',        type: 'fixedId',    required: true,  label: 'ID Sucursal',           defaultFixed: 1 },
@@ -70,6 +71,11 @@ async function mapArticulo(row) {
 
     if (type === 'fixed') {
       payload[field] = fixedValue;
+    } else if (type === 'skuPrefix') {
+      // Toma los primeros N caracteres del SKU como valor del campo
+      const sku = String(row['Clave_Articulo'] ?? '');
+      const len = def.prefixLen ?? 5;
+      payload[field] = sku.substring(0, len);
     } else if (type === 'fixedId') {
       // El usuario puede haber sobreescrito el ID en fieldMap como número
       const val = fieldMap[field];
@@ -110,7 +116,9 @@ async function sync(cambio) {
   } catch { exists = false; }
 
   if (exists) {
-    await ps.put(`/products/${encodeURIComponent(clave_registro)}`, { data: [payload] });
+    // En lugar de enviar a /products/{sku} que puede causar un bug de actualización masiva en PowerSales
+    // si el SKU tiene diagonales (%2F) o si todos los IDs son 0, enviamos al endpoint general en formato array.
+    await ps.put('/products', { data: [payload] });
   } else {
     await ps.post('/products', { data: [payload] });
   }

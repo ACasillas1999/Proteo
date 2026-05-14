@@ -6,6 +6,7 @@ const TYPE_BADGE = {
   number:     { label: 'Número',     color: '#a78bfa' },
   boolean:    { label: 'Booleano',   color: '#34d399' },
   fixedId:    { label: 'ID fijo',    color: '#fb923c' },
+  skuPrefix:  { label: 'Prefijo SKU', color: '#f472b6' },
   categoryId: { label: 'Categoría',  color: '#fbbf24' },
   fixed:      { label: 'Sistema',    color: '#6b7280' },
 };
@@ -28,15 +29,11 @@ export default function Mapeo() {
       // Pre-inicializar con defaults del código, luego sobrescribir con lo guardado en BD
       const initialFieldMap = {};
       for (const def of psFields) {
-        if (def.type === 'fixed') continue; // campos de sistema, no se mapean
-        if (def.type === 'text' || def.type === 'number' || def.type === 'boolean') {
+        if (def.type === 'fixed' || def.type === 'skuPrefix') continue; // automáticos, no se mapean
+        if (def.type === 'text' || def.type === 'number' || def.type === 'boolean' || def.type === 'fixedId' || def.type === 'categoryId') {
           initialFieldMap[def.field] = savedFieldMap[def.field] !== undefined
             ? savedFieldMap[def.field]
             : (def.defaultErp ?? '');
-        } else if (def.type === 'fixedId' || def.type === 'categoryId') {
-          initialFieldMap[def.field] = savedFieldMap[def.field] !== undefined
-            ? savedFieldMap[def.field]
-            : (def.defaultFixed ?? 1);
         }
       }
 
@@ -123,12 +120,11 @@ export default function Mapeo() {
                     {String(fixedValue)} <span style={{ opacity: .5 }}>(sistema)</span>
                   </span>
                 );
-              } else if (type === 'fixedId' || type === 'categoryId') {
-                const cur = fieldMap[field] !== undefined ? fieldMap[field] : (art[field] ?? defaultFixed ?? 1);
+              } else if (type === 'skuPrefix') {
                 control = (
-                  <input type="number" min={1} style={{ width: 100, borderRadius: 'var(--radius-sm)' }}
-                    value={cur}
-                    onChange={e => setFieldMapVal(field, parseInt(e.target.value) || 1)} />
+                  <span style={{ color: '#f472b6', fontSize: 12, fontStyle: 'italic' }}>
+                    🔑 Primeros <strong>5</strong> caracteres de <code style={{ background: 'var(--surface2)', padding: '1px 6px', borderRadius: 4 }}>Clave_Articulo</code> (automático)
+                  </span>
                 );
               } else {
                 const cur = fieldMap[field] !== undefined ? fieldMap[field] : (defaultErp ?? '');
