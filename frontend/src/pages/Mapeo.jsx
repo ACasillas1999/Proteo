@@ -24,16 +24,23 @@ export default function Mapeo() {
       axios.get('/api/mapeo/fields'),
     ]).then(([m, f]) => {
       const psFields      = f.data.psFields ?? [];
+      const erpColumns    = f.data.erpColumns ?? [];
       const savedFieldMap = m.data.data?.articulo?.fieldMap ?? {};
 
       // Pre-inicializar con defaults del código, luego sobrescribir con lo guardado en BD
       const initialFieldMap = {};
       for (const def of psFields) {
-        if (def.type === 'fixed' || def.type === 'skuPrefix') continue; // automáticos, no se mapean
+        if (def.type === 'fixed' || def.type === 'skuPrefix') continue;
         if (def.type === 'text' || def.type === 'number' || def.type === 'boolean' || def.type === 'fixedId' || def.type === 'categoryId') {
-          initialFieldMap[def.field] = savedFieldMap[def.field] !== undefined
-            ? savedFieldMap[def.field]
-            : (def.defaultErp ?? '');
+          const saved = savedFieldMap[def.field];
+          // Solo conservar si es una columna ERP real; cualquier valor numérico viejo se descarta
+          const isValidErpCol = saved !== undefined && saved !== null && saved !== '' && erpColumns.includes(String(saved));
+          if (isValidErpCol) {
+            initialFieldMap[def.field] = saved;
+          } else {
+            // No está mapeado o tiene un valor residual inválido → vacío
+            initialFieldMap[def.field] = '';
+          }
         }
       }
 
@@ -41,7 +48,7 @@ export default function Mapeo() {
         ...m.data.data,
         articulo: { ...m.data.data?.articulo, fieldMap: initialFieldMap },
       });
-      setFields({ psFields, erpColumns: f.data.erpColumns ?? [] });
+      setFields({ psFields, erpColumns });
     }).finally(() => setLoading(false));
   }, []);
 

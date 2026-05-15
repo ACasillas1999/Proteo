@@ -14,7 +14,7 @@ function getPool() {
       waitForConnections: true,
       connectionLimit:    5,
       queueLimit:         0,
-      timezone:           '+00:00',
+      timezone:           'local',   // usa el timezone del servidor (UTC-6), no UTC
       multipleStatements: true,
     });
   }
@@ -147,8 +147,13 @@ async function saveFieldMapping(entity, mappings) {
  * @param {number} estado    - 1=ok, 2=error
  * @param {string} errorMsg  - Mensaje de error (si aplica)
  * @param {number} intentos  - Número de intentos realizados
+ * @param {object} payload   - JSON enviado a PowerSales (opcional)
  */
-async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1) {
+async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, payload = null) {
+  const datosJson = payload
+    ? JSON.stringify(payload)
+    : (cambio.datos ? JSON.stringify(cambio.datos) : null);
+
   await localQuery(
     `INSERT INTO sync_history
        (cambio_id, entidad, operacion, clave_registro, datos, estado, error_msg, intentos, fecha_cambio)
@@ -158,7 +163,7 @@ async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1) {
       cambio.entidad       || cambio.tabla || 'desconocido',
       cambio.operacion     || cambio.tipo  || 'UPDATE',
       cambio.clave_registro,
-      cambio.datos ? JSON.stringify(cambio.datos) : null,
+      datosJson,
       estado,
       errorMsg ? String(errorMsg).substring(0, 2000) : null,
       intentos,

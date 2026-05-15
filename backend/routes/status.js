@@ -118,13 +118,20 @@ router.get('/debug-api-test', async (req, res) => {
   }
 });
 
-// Rutas de catálogo PowerSales
-['brands','categories','lines','sub-brands','sub-categories'].forEach(entity => {
-  router.get(`/ps-${entity}`, async (req, res) => {
+// Rutas de catálogo PowerSales — nombres correctos según Swagger
+const PS_CATALOG_ENDPOINTS = {
+  'brands':          'brand',
+  'categories':      'categories',
+  'lines':           'productlines',
+  'sub-brands':      'sub-brands',
+  'sub-categories':  'sub-categories',
+};
+
+Object.entries(PS_CATALOG_ENDPOINTS).forEach(([alias, psPath]) => {
+  router.get(`/ps-${alias}`, async (req, res) => {
     try {
-      const { query: psQuery } = require('../src/db');
       const ps = require('../src/powersales');
-      const r = await ps.get(`/${entity}`);
+      const r = await ps.get(`/${psPath}`);
       res.json(r.data);
     } catch(err) {
       res.json({ error: err.response?.data || err.message, status: err.response?.status });

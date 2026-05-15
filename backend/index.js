@@ -10,22 +10,24 @@ const { startBinlog }   = require('./src/binlog');
 const { startPoller }   = require('./src/processor');
 const { migrate }       = require('./src/localdb');
 
-const statusRouter  = require('./routes/status');
-const cambiosRouter = require('./routes/cambios');
-const configRouter  = require('./routes/config');
-const workerRouter  = require('./routes/worker');
-const mapeoRouter   = require('./routes/mapeo');
+const statusRouter      = require('./routes/status');
+const cambiosRouter     = require('./routes/cambios');
+const configRouter      = require('./routes/config');
+const workerRouter      = require('./routes/worker');
+const mapeoRouter       = require('./routes/mapeo');
+const syncHistoryRouter = require('./routes/syncHistory');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // ── Routes ──────────────────────────────────────────────────────────────────
-app.use('/api/status',  statusRouter);
-app.use('/api/cambios', cambiosRouter);
-app.use('/api',         configRouter);   // GET/PUT /api/config
-app.use('/api/worker',  workerRouter);   // POST /api/worker/pause|resume
-app.use('/api/mapeo',   mapeoRouter);    // GET/PUT /api/mapeo
+app.use('/api/status',       statusRouter);
+app.use('/api/cambios',      cambiosRouter);
+app.use('/api',              configRouter);        // GET/PUT /api/config
+app.use('/api/worker',       workerRouter);        // POST /api/worker/pause|resume
+app.use('/api/mapeo',        mapeoRouter);         // GET/PUT /api/mapeo
+app.use('/api/sync-history', syncHistoryRouter);   // GET /api/sync-history
 
 // Health check
 app.get('/', (_req, res) => res.json({ ok: true, service: 'powersales-sync' }));

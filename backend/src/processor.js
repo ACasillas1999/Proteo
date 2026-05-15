@@ -83,12 +83,12 @@ async function processChange(cambioId) {
 
   for (attempt = 1; attempt <= cfg.max_retries; attempt++) {
     try {
-      await handler.sync(cambio);
+      const payload = await handler.sync(cambio);
 
       const ms = Date.now() - t0;
 
-      // 3. Guardar OK en historial local
-      await saveSyncHistory(cambio, 1, null, attempt).catch(e =>
+      // 3. Guardar OK en historial local (con payload enviado)
+      await saveSyncHistory(cambio, 1, null, attempt, payload).catch(e =>
         console.error('[PROC] Error guardando historial local:', e.message)
       );
 

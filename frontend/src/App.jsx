@@ -3,15 +3,17 @@ import Dashboard      from './pages/Dashboard.jsx';
 import Auditoria      from './pages/Auditoria.jsx';
 import Configuracion  from './pages/Configuracion.jsx';
 import Mapeo          from './pages/Mapeo.jsx';
+import Payload        from './pages/Payload.jsx';
 import WorkerStatus   from './components/WorkerStatus.jsx';
 import { useWebSocket } from './hooks/useWebSocket.js';
-import { Zap, ClipboardList, Map, Settings } from 'lucide-react';
+import { Zap, ClipboardList, Map, Settings, SendHorizontal } from 'lucide-react';
 
 const NAV = [
-  { to: '/',              icon: Zap,           label: 'Dashboard' },
-  { to: '/auditoria',     icon: ClipboardList, label: 'Auditoría' },
-  { to: '/mapeo',         icon: Map,           label: 'Mapeo' },
-  { to: '/configuracion', icon: Settings,      label: 'Configuración' },
+  { to: '/',              icon: Zap,            label: 'Dashboard' },
+  { to: '/auditoria',     icon: ClipboardList,  label: 'Auditoría' },
+  { to: '/payloads',      icon: SendHorizontal, label: 'Payloads' },
+  { to: '/mapeo',         icon: Map,            label: 'Mapeo' },
+  { to: '/configuracion', icon: Settings,       label: 'Configuración' },
 ];
 
 export default function App() {
@@ -47,6 +49,7 @@ export default function App() {
           <Routes>
             <Route path="/"              element={<Dashboard wsEvents={events} />} />
             <Route path="/auditoria"     element={<Auditoria />} />
+            <Route path="/payloads"      element={<Payload />} />
             <Route path="/mapeo"         element={<Mapeo />} />
             <Route path="/configuracion" element={<Configuracion />} />
           </Routes>
