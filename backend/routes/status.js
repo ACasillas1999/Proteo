@@ -120,11 +120,14 @@ router.get('/debug-api-test', async (req, res) => {
 
 // Rutas de catálogo PowerSales — nombres correctos según Swagger
 const PS_CATALOG_ENDPOINTS = {
-  'brands':          'brand',
-  'categories':      'categories',
-  'lines':           'productlines',
-  'sub-brands':      'sub-brands',
-  'sub-categories':  'sub-categories',
+  'brands':              'brand',
+  'categories':          'categories',
+  'lines':               'productlines',
+  'sub-brands':          'sub-brands',
+  'sub-categories':      'sub-categories',
+  'branches':            'branches',
+  'warehouse':           'warehouse',
+  'warehouseinventory':  'warehouseinventory',
 };
 
 Object.entries(PS_CATALOG_ENDPOINTS).forEach(([alias, psPath]) => {

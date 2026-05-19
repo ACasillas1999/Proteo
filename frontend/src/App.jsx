@@ -4,14 +4,16 @@ import Auditoria      from './pages/Auditoria.jsx';
 import Configuracion  from './pages/Configuracion.jsx';
 import Mapeo          from './pages/Mapeo.jsx';
 import Payload        from './pages/Payload.jsx';
+import Webhooks       from './pages/Webhooks.jsx';
 import WorkerStatus   from './components/WorkerStatus.jsx';
 import { useWebSocket } from './hooks/useWebSocket.js';
-import { Zap, ClipboardList, Map, Settings, SendHorizontal } from 'lucide-react';
+import { Zap, ClipboardList, Map, Settings, SendHorizontal, Webhook } from 'lucide-react';
 
 const NAV = [
   { to: '/',              icon: Zap,            label: 'Dashboard' },
   { to: '/auditoria',     icon: ClipboardList,  label: 'Auditoría' },
   { to: '/payloads',      icon: SendHorizontal, label: 'Payloads' },
+  { to: '/webhooks',      icon: Webhook,        label: 'Webhooks' },
   { to: '/mapeo',         icon: Map,            label: 'Mapeo' },
   { to: '/configuracion', icon: Settings,       label: 'Configuración' },
 ];
@@ -50,6 +52,7 @@ export default function App() {
             <Route path="/"              element={<Dashboard wsEvents={events} />} />
             <Route path="/auditoria"     element={<Auditoria />} />
             <Route path="/payloads"      element={<Payload />} />
+            <Route path="/webhooks"      element={<Webhooks />} />
             <Route path="/mapeo"         element={<Mapeo />} />
             <Route path="/configuracion" element={<Configuracion />} />
           </Routes>

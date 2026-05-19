@@ -83,7 +83,8 @@ async function mapArticulo(row) {
         ? fieldMap[field]
         : def.defaultErp;
       const rawVal = erpCol ? String(row[erpCol] ?? '').trim() || null : null;
-      payload[field] = rawVal ?? def.fallbackValue ?? null;
+      const isFallback = rawVal === null || rawVal === '0';
+      payload[field] = isFallback ? (def.fallbackValue ?? null) : rawVal;
     } else if (type === 'fixedId') {
       const val = fieldMap[field];
       if (val !== undefined && val !== null) {

@@ -56,6 +56,12 @@ async function processChange(cambioId) {
       return;
     }
     cambio = rows[0];
+    
+    // Evitar el "ECHO" de los webhooks o procesos repetidos
+    if (cambio.sincronizado !== 0) {
+      console.log(`[PROC] Cambio #${cambioId} ya está marcado como sincronizado (echo evitado).`);
+      return;
+    }
   } catch (e) {
     console.error('[PROC] Error leyendo Cambios:', e.message);
     return;

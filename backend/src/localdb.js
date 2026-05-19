@@ -73,6 +73,22 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS webhook_logs (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        entidad         VARCHAR(50)  NOT NULL,
+        clave_registro  VARCHAR(100) NOT NULL,
+        datos           JSON         DEFAULT NULL,
+        estado          TINYINT      NOT NULL DEFAULT 0 COMMENT '1=ok, 2=error',
+        error_msg       TEXT         DEFAULT NULL,
+        fecha_recepcion DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_entidad   (entidad),
+        INDEX idx_estado    (estado),
+        INDEX idx_clave     (clave_registro),
+        INDEX idx_fecha     (fecha_recepcion)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     console.log('[LocalDB] ✓ Tablas verificadas en proteo_db');
   } finally {
     conn.release();
@@ -143,11 +159,6 @@ async function saveFieldMapping(entity, mappings) {
 
 /**
  * Guarda el resultado de un intento de sincronización en el historial local.
- * @param {object} cambio    - Registro original de la tabla Cambios
- * @param {number} estado    - 1=ok, 2=error
- * @param {string} errorMsg  - Mensaje de error (si aplica)
- * @param {number} intentos  - Número de intentos realizados
- * @param {object} payload   - JSON enviado a PowerSales (opcional)
  */
 async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, payload = null) {
   const datosJson = payload
@@ -172,9 +183,29 @@ async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, pa
   );
 }
 
+/**
+ * Guarda el log de un webhook recibido.
+ */
+async function saveWebhookLog(entidad, claveRegistro, datos, estado, errorMsg = null) {
+  const datosJson = datos ? JSON.stringify(datos) : null;
+  
+  await localQuery(
+    `INSERT INTO webhook_logs
+       (entidad, clave_registro, datos, estado, error_msg)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      entidad,
+      claveRegistro,
+      datosJson,
+      estado,
+      errorMsg ? String(errorMsg).substring(0, 2000) : null
+    ]
+  );
+}
+
 module.exports = {
   localQuery, migrate,
   getConfig, setConfig, getAllConfig,
   getFieldMapping, saveFieldMapping,
-  saveSyncHistory,
+  saveSyncHistory, saveWebhookLog,
 };
