@@ -9,11 +9,17 @@ const TYPE_BADGE = {
   skuPrefix:  { label: 'Prefijo SKU', color: '#f472b6' },
   categoryId: { label: 'Categoría',  color: '#fbbf24' },
   fixed:      { label: 'Sistema',    color: '#6b7280' },
+  erpColumn:  { label: 'Columna ERP',color: '#38bdf8' },
+  numStr:     { label: 'Núm. (Texto)',color: '#a78bfa' }
 };
 
 export default function Mapeo() {
+  const [activeTab, setActiveTab] = useState('articulo');
   const [mapeo,   setMapeo]   = useState(null);
-  const [fields,  setFields]  = useState({ psFields: [], erpColumns: [] });
+  
+  const [fieldsArt, setFieldsArt] = useState({ psFields: [], erpColumns: [] });
+  const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [] });
+
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState(false);
   const [filter,  setFilter]  = useState('');
@@ -22,33 +28,41 @@ export default function Mapeo() {
     Promise.all([
       axios.get('/api/mapeo'),
       axios.get('/api/mapeo/fields'),
-    ]).then(([m, f]) => {
-      const psFields      = f.data.psFields ?? [];
-      const erpColumns    = f.data.erpColumns ?? [];
-      const savedFieldMap = m.data.data?.articulo?.fieldMap ?? {};
-
-      // Pre-inicializar con defaults del código, luego sobrescribir con lo guardado en BD
-      const initialFieldMap = {};
-      for (const def of psFields) {
-        if (def.type === 'fixed' || def.type === 'skuPrefix') continue;
-        if (def.type === 'text' || def.type === 'number' || def.type === 'boolean' || def.type === 'fixedId' || def.type === 'categoryId') {
-          const saved = savedFieldMap[def.field];
-          // Solo conservar si es una columna ERP real; cualquier valor numérico viejo se descarta
-          const isValidErpCol = saved !== undefined && saved !== null && saved !== '' && erpColumns.includes(String(saved));
-          if (isValidErpCol) {
-            initialFieldMap[def.field] = saved;
+      axios.get('/api/mapeo/fields/articuloalm')
+    ]).then(([m, fArt, fAlm]) => {
+      
+      const setupFields = (fData, savedMap) => {
+        const psFields = fData.psFields ?? [];
+        const erpColumns = fData.erpColumns ?? [];
+        const fieldMap = savedMap ?? {};
+        
+        const initialFieldMap = {};
+        for (const def of psFields) {
+          if (def.type === 'fixed' || def.type === 'skuPrefix') continue;
+          
+          const saved = fieldMap[def.field];
+          if (def.type === 'fixedId') {
+            initialFieldMap[def.field] = saved !== undefined ? saved : (def.defaultFixed || '');
           } else {
-            // No está mapeado o tiene un valor residual inválido → vacío
-            initialFieldMap[def.field] = '';
+            const isValidErpCol = saved !== undefined && saved !== null && saved !== '' && erpColumns.includes(String(saved));
+            initialFieldMap[def.field] = isValidErpCol ? saved : '';
           }
         }
-      }
+        return { psFields, erpColumns, initialFieldMap };
+      };
+
+      const artData = setupFields(fArt.data, m.data.data?.articulo?.fieldMap);
+      const almData = setupFields(fAlm.data, m.data.data?.articuloalm?.fieldMap);
 
       setMapeo({
         ...m.data.data,
-        articulo: { ...m.data.data?.articulo, fieldMap: initialFieldMap },
+        articulo: { ...m.data.data?.articulo, fieldMap: artData.initialFieldMap },
+        articuloalm: { ...m.data.data?.articuloalm, fieldMap: almData.initialFieldMap },
       });
-      setFields({ psFields, erpColumns });
+
+      setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns });
+      setFieldsAlm({ psFields: almData.psFields, erpColumns: almData.erpColumns });
+
     }).finally(() => setLoading(false));
   }, []);
 
@@ -57,18 +71,21 @@ export default function Mapeo() {
     catch { /* ignore */ }
   };
 
-  const setFieldMapVal = (psField, val) =>
-    setMapeo(p => ({ ...p, articulo: { ...p.articulo, fieldMap: { ...p.articulo.fieldMap, [psField]: val } } }));
+  const setFieldMapVal = (tab, psField, val) =>
+    setMapeo(p => ({
+      ...p,
+      [tab]: { ...p[tab], fieldMap: { ...p[tab].fieldMap, [psField]: val } }
+    }));
 
   if (loading) return <p className="text-muted" style={{ padding: 32 }}>Cargando…</p>;
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
-  const art      = mapeo.articulo ?? {};
-  const fieldMap = art.fieldMap ?? {};
-  const psFields = Array.isArray(fields.psFields)
-    ? fields.psFields
-    : Object.entries(fields.psFields).map(([k, v]) => ({ field: k, ...v }));
-  const erpCols  = fields.erpColumns ?? [];
+  const currentData = activeTab === 'articulo' ? mapeo.articulo : mapeo.articuloalm;
+  const currentFields = activeTab === 'articulo' ? fieldsArt : fieldsAlm;
+  const fieldMap = currentData?.fieldMap ?? {};
+
+  const psFields = Array.isArray(currentFields.psFields) ? currentFields.psFields : [];
+  const erpCols  = currentFields.erpColumns ?? [];
 
   const visibleFields = psFields.filter(f =>
     !filter ||
@@ -80,7 +97,7 @@ export default function Mapeo() {
     <div>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <h1 className="section-title" style={{ margin: 0 }}>🗺️ Mapeo de Campos — Artículos</h1>
+        <h1 className="section-title" style={{ margin: 0 }}>🗺️ Mapeo de Campos</h1>
         <input
           placeholder="🔍 Filtrar campos…"
           value={filter}
@@ -89,6 +106,20 @@ export default function Mapeo() {
         />
         <button className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} onClick={save}>
           {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+        <button 
+          className={`btn ${activeTab === 'articulo' ? 'btn--cyan' : 'btn--outline'}`} 
+          onClick={() => { setActiveTab('articulo'); setFilter(''); }}>
+          📦 Artículos (productos)
+        </button>
+        <button 
+          className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
+          onClick={() => { setActiveTab('articuloalm'); setFilter(''); }}>
+          🏢 Inventario (articuloalm)
         </button>
       </div>
 
@@ -116,7 +147,7 @@ export default function Mapeo() {
           </thead>
           <tbody>
             {visibleFields.map((def, i) => {
-              const { field, type, label, required, defaultErp, defaultFixed, fixedValue } = def;
+              const { field, type, label, required, defaultErp, fixedValue } = def;
               const badge = TYPE_BADGE[type] ?? TYPE_BADGE.text;
               const rowBg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.02)';
 
@@ -130,13 +161,20 @@ export default function Mapeo() {
               } else if (type === 'skuPrefix') {
                 control = (
                   <span style={{ color: '#f472b6', fontSize: 12, fontStyle: 'italic' }}>
-                    🔑 Primeros <strong>5</strong> caracteres de <code style={{ background: 'var(--surface2)', padding: '1px 6px', borderRadius: 4 }}>Clave_Articulo</code> (automático)
+                    🔑 Primeros <strong>5</strong> caracteres del código (automático)
                   </span>
+                );
+              } else if (type === 'fixedId') {
+                const cur = fieldMap[field] !== undefined ? fieldMap[field] : '';
+                control = (
+                  <input type="text" value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
+                    placeholder="Valor estático o nombre de columna"
+                    style={{ width: '100%', maxWidth: 300, borderRadius: 'var(--radius-sm)' }} />
                 );
               } else {
                 const cur = fieldMap[field] !== undefined ? fieldMap[field] : (defaultErp ?? '');
                 control = (
-                  <select value={cur} onChange={e => setFieldMapVal(field, e.target.value)}
+                  <select value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
                     style={{ width: '100%', maxWidth: 300, borderRadius: 'var(--radius-sm)' }}>
                     <option value="">(sin mapear — vacío)</option>
                     {erpCols.map(col => <option key={col} value={col}>{col}</option>)}

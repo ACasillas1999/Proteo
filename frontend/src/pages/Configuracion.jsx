@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const TABLAS_DISPONIBLES = ['articulo', 'cliente', 'proveedor', 'precio'];
+const TABLAS_DISPONIBLES = ['articulo', 'articuloalm', 'cliente', 'proveedor', 'precio'];
 
 export default function Configuracion() {
   const [cfg,     setCfg]     = useState(null);

@@ -50,7 +50,7 @@ const PS_FIELDS = [
   { field: 'BrandId',       type: 'skuPrefix',  required: true,  label: 'ID Marca (BrandNumber)',      prefixLen: 5 },
   { field: 'SubBrandId',    type: 'fixedId',    required: true,  label: 'ID Sub-marca',                defaultFixed: null, asInteger: true },
   { field: 'LineId',        type: 'erpColumn',  required: true,  label: 'ID Línea (LineNumber)',        defaultErp: 'Linea', fallbackValue: '9999' },
-  { field: 'BranchId',      type: 'fixedId',    required: true,  label: 'ID Sucursal',                 defaultFixed: null, asInteger: true },
+  { field: 'BranchId',      type: 'fixedId',    required: true,  label: 'ID Sucursal',                 defaultFixed: process.env.PS_BRANCH_ID || '1', asInteger: true },
   { field: 'CategoryId',    type: 'erpColumn',  required: true,  label: 'ID Categoría (CategoryNumber)', defaultErp: 'Clasificacion', fallbackValue: '9999' },
   { field: 'SubCategoryId', type: 'erpColumn',  required: true,  label: 'ID Sub-categoría',            defaultErp: null },
   // Mapeables o null si sin mapear
