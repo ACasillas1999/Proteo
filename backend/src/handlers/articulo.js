@@ -57,6 +57,11 @@ const PS_FIELDS = [
   { field: 'ProductType',   type: 'text',       required: false, label: 'Tipo de producto',            defaultErp: null },
   { field: 'IsPMRequired',  type: 'boolean',    required: false, label: 'PM requerido',                defaultErp: null },
   { field: 'IsDecimal',     type: 'boolean',    required: false, label: 'Es decimal',                  defaultErp: null },
+  // Listas de precios (no van a /products, sino a /pricelistsdetails)
+  { field: 'PL_Precio_Lista',    type: 'priceList',  required: false, label: 'Precio_Lista (Lista 1)',     defaultErp: 'Precio_Lista',    listName: 'Precio_Lista' },
+  { field: 'PL_Precio_Venta',    type: 'priceList',  required: false, label: 'Precio_Venta (Lista 2)',     defaultErp: 'Precio_Venta',    listName: 'Precio_Venta' },
+  { field: 'PL_Precio_Especial', type: 'priceList',  required: false, label: 'Precio_Especial (Lista 3)',  defaultErp: 'Precio_Especial', listName: 'Precio_Especial' },
+  { field: 'PL_Precio4',         type: 'priceList',  required: false, label: 'Precio4 (Lista 4)',          defaultErp: 'Precio4',         listName: 'Precio4' },
 ];
 
 async function mapArticulo(row) {
@@ -66,9 +71,17 @@ async function mapArticulo(row) {
   const categoryId    = (m.categories?.[clasificacion]) ?? m.defaultCategoryId ?? 1;
 
   const payload = {};
+  const priceListsMapped = {};
 
   for (const def of PS_FIELDS) {
     const { field, type, defaultErp, defaultFixed, fixedValue } = def;
+
+    if (type === 'priceList') {
+      const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
+      const raw = erpCol ? (row[erpCol] ?? '') : '';
+      priceListsMapped[def.listName] = parseFloat(raw) || 0;
+      continue;
+    }
 
     if (type === 'fixed') {
       payload[field] = fixedValue;
@@ -139,7 +152,7 @@ async function mapArticulo(row) {
     }
   }
 
-  return payload;
+  return { payload, priceListsMapped };
 }
 
 async function sync(cambio) {
@@ -150,10 +163,42 @@ async function sync(cambio) {
   );
   if (!rows.length) throw new Error(`Artículo '${clave_registro}' no encontrado en ERP`);
 
-  const payload = await mapArticulo(rows[0]);
+  const row = rows[0];
+  const mapped = await mapArticulo(row);
+  
+  // Compatibilidad con si alguien llama a mapArticulo esperando solo payload (aunque aquí usamos el objeto)
+  const payload = mapped.payload ?? mapped;
+  const priceListsMapped = mapped.priceListsMapped ?? {};
 
   // PowerSales solo acepta POST para crear/actualizar productos
   await ps.post('/products', { data: [payload] });
+
+  // 1. Armar y enviar el catálogo de listas de precios (headers)
+  const priceListsNames = Object.keys(priceListsMapped);
+  if (priceListsNames.length > 0) {
+    const plData = priceListsNames.map(pl => ({
+      Name: pl,
+      IsActive: 1,
+      IsDefault: 0,
+      PriceListNumber: pl
+    }));
+    await ps.post('/pricelists', { data: plData });
+
+    // 2. Armar y enviar los detalles de precios para este artículo
+    const costVal = parseFloat(row['Costo_Ult_Compra']) || 0;
+    const pldData = Object.entries(priceListsMapped).map(([pl, priceVal]) => {
+      return {
+        ProductId: String(row['Clave_Articulo'] ?? ''),
+        PriceListId: pl,
+        Cost: String(costVal),
+        Price: String(priceVal),
+        IsActive: 1
+      };
+    });
+    await ps.post('/pricelistsdetails', { data: pldData });
+    
+    return { product: payload, priceListsDetails: pldData };
+  }
 
   return payload;
 }

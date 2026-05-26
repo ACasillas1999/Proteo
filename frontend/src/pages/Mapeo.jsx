@@ -71,27 +71,38 @@ export default function Mapeo() {
     catch { /* ignore */ }
   };
 
-  const setFieldMapVal = (tab, psField, val) =>
+  const setFieldMapVal = (tab, psField, val) => {
+    const targetEntity = tab === 'pricelists' ? 'articulo' : tab;
     setMapeo(p => ({
       ...p,
-      [tab]: { ...p[tab], fieldMap: { ...p[tab].fieldMap, [psField]: val } }
+      [targetEntity]: { ...p[targetEntity], fieldMap: { ...p[targetEntity].fieldMap, [psField]: val } }
     }));
+  };
 
   if (loading) return <p className="text-muted" style={{ padding: 32 }}>Cargando…</p>;
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
-  const currentData = activeTab === 'articulo' ? mapeo.articulo : mapeo.articuloalm;
-  const currentFields = activeTab === 'articulo' ? fieldsArt : fieldsAlm;
+  // Both 'articulo' and 'pricelists' share the same underlying data entity (articulo)
+  const currentData = activeTab === 'articuloalm' ? mapeo.articuloalm : mapeo.articulo;
+  const currentFields = activeTab === 'articuloalm' ? fieldsAlm : fieldsArt;
   const fieldMap = currentData?.fieldMap ?? {};
 
   const psFields = Array.isArray(currentFields.psFields) ? currentFields.psFields : [];
   const erpCols  = currentFields.erpColumns ?? [];
 
-  const visibleFields = psFields.filter(f =>
-    !filter ||
-    f.field.toLowerCase().includes(filter.toLowerCase()) ||
-    (f.label ?? '').toLowerCase().includes(filter.toLowerCase())
-  );
+  const visibleFields = psFields.filter(f => {
+    // 1. Filtrar por pestaña
+    if (activeTab === 'articulo' && f.type === 'priceList') return false;
+    if (activeTab === 'pricelists' && f.type !== 'priceList') return false;
+
+    // 2. Filtrar por texto
+    if (filter) {
+      const match = f.field.toLowerCase().includes(filter.toLowerCase()) ||
+                    (f.label ?? '').toLowerCase().includes(filter.toLowerCase());
+      if (!match) return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -110,11 +121,16 @@ export default function Mapeo() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' }}>
         <button 
           className={`btn ${activeTab === 'articulo' ? 'btn--cyan' : 'btn--outline'}`} 
           onClick={() => { setActiveTab('articulo'); setFilter(''); }}>
           📦 Artículos (productos)
+        </button>
+        <button 
+          className={`btn ${activeTab === 'pricelists' ? 'btn--cyan' : 'btn--outline'}`} 
+          onClick={() => { setActiveTab('pricelists'); setFilter(''); }}>
+          💲 Listas de Precios
         </button>
         <button 
           className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
@@ -131,6 +147,11 @@ export default function Mapeo() {
             background: 'var(--surface2)', color: v.color, fontWeight: 600,
           }}>● {v.label}</span>
         ))}
+        {/* Leyenda adicional para priceList */}
+        <span style={{
+          fontSize: 11, padding: '3px 10px', borderRadius: 20,
+          background: 'var(--surface2)', color: '#4ade80', fontWeight: 600,
+        }}>● Lista de Precio</span>
       </div>
 
       {/* Tabla */}
