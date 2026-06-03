@@ -11,6 +11,7 @@ router.get('/', async (_req, res) => {
   try {
     const fieldMap          = await getFieldMapping('articulo');
     const fieldMapAlm       = await getFieldMapping('articuloalm');
+    const fieldMapCli       = await getFieldMapping('cliente');
     const categories        = await getConfig('articulo_categories', {
       MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
       HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
@@ -21,7 +22,8 @@ router.get('/', async (_req, res) => {
       ok: true, 
       data: { 
         articulo: { fieldMap, categories, defaultCategoryId },
-        articuloalm: { fieldMap: fieldMapAlm }
+        articuloalm: { fieldMap: fieldMapAlm },
+        cliente: { fieldMap: fieldMapCli }
       } 
     });
   } catch (err) {
@@ -33,15 +35,17 @@ router.get('/', async (_req, res) => {
 // PUT /api/mapeo — guarda el mapeo en proteo_db
 router.put('/', async (req, res) => {
   try {
-    const incoming = req.body;                        // { articulo: { fieldMap, categories, defaultCategoryId } }
-    const art = incoming.articulo ?? {};
+    const incoming = req.body;
+    const art    = incoming.articulo ?? {};
     const artAlm = incoming.articuloalm ?? {};
+    const cli    = incoming.cliente ?? {};
 
     if (art.fieldMap)          await saveFieldMapping('articulo', art.fieldMap);
     if (art.categories)        await setConfig('articulo_categories', art.categories);
     if (art.defaultCategoryId) await setConfig('articulo_defaultCategoryId', art.defaultCategoryId);
     
     if (artAlm.fieldMap)       await saveFieldMapping('articuloalm', artAlm.fieldMap);
+    if (cli.fieldMap)          await saveFieldMapping('cliente', cli.fieldMap);
 
     res.json({ ok: true, data: incoming });
   } catch (err) {
@@ -73,6 +77,20 @@ router.get('/fields/articuloalm', async (_req, res) => {
     const [rows] = await query('SHOW COLUMNS FROM articuloalm');
     erpColumns = rows.map(r => r.Field);
   } catch { /* DB no disponible */ }
+
+  res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
+});
+
+// GET /api/mapeo/fields/cliente — devuelve campos PS y columnas ERP disponibles para clientes
+router.get('/fields/cliente', async (_req, res) => {
+  const { PS_FIELDS } = require('../src/handlers/cliente');
+  const { query }     = require('../src/db');
+
+  let erpColumns = [];
+  try {
+    const [rows] = await query('SHOW COLUMNS FROM clientes');
+    erpColumns = rows.map(r => r.Field);
+  } catch { /* DB no disponible o tabla no existe aún */ }
 
   res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
 });

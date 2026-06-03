@@ -17,6 +17,7 @@ const workerRouter      = require('./routes/worker');
 const mapeoRouter       = require('./routes/mapeo');
 const syncHistoryRouter = require('./routes/syncHistory');
 const webhooksRouter    = require('./routes/webhooks');
+const grupoascencioRouter = require('./routes/grupoascencio');
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,7 @@ app.use('/api/worker',       workerRouter);        // POST /api/worker/pause|res
 app.use('/api/mapeo',        mapeoRouter);         // GET/PUT /api/mapeo
 app.use('/api/sync-history', syncHistoryRouter);   // GET /api/sync-history
 app.use('/api/webhooks',     webhooksRouter);      // POST /api/webhooks/...
+app.use('/api/grupoascencio', grupoascencioRouter); // GET/POST /api/grupoascencio/pricelists...
 
 // Health check
 app.get('/', (_req, res) => res.json({ ok: true, service: 'powersales-sync' }));

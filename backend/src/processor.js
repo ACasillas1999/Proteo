@@ -6,12 +6,13 @@ const config                           = require('./config');
 
 const articuloHandler = require('./handlers/articulo');
 const articuloalmHandler = require('./handlers/articuloalm');
+const clienteHandler = require('./handlers/cliente');
 
 /** Mapa de handlers por nombre de tabla */
 const HANDLERS = {
   articulo: articuloHandler,
   articuloalm: articuloalmHandler,
-  // cliente: clienteHandler,
+  clientes: clienteHandler,
 };
 
 /** Estado en memoria del processor (runtime stats) */

@@ -5,7 +5,7 @@
  * PUT /api/config actualiza estos valores sin reiniciar el worker.
  */
 const _cfg = {
-  tablas_activas:  ['articulo', 'articuloalm'],
+  tablas_activas:  ['articulo', 'articuloalm', 'clientes'],
   max_retries:     3,
   retry_backoff_ms: 1000,
   paused:          false,

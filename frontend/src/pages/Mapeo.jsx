@@ -19,6 +19,7 @@ export default function Mapeo() {
   
   const [fieldsArt, setFieldsArt] = useState({ psFields: [], erpColumns: [] });
   const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [] });
+  const [fieldsCli, setFieldsCli] = useState({ psFields: [], erpColumns: [] });
 
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState(false);
@@ -28,8 +29,9 @@ export default function Mapeo() {
     Promise.all([
       axios.get('/api/mapeo'),
       axios.get('/api/mapeo/fields'),
-      axios.get('/api/mapeo/fields/articuloalm')
-    ]).then(([m, fArt, fAlm]) => {
+      axios.get('/api/mapeo/fields/articuloalm'),
+      axios.get('/api/mapeo/fields/cliente')
+    ]).then(([m, fArt, fAlm, fCli]) => {
       
       const setupFields = (fData, savedMap) => {
         const psFields = fData.psFields ?? [];
@@ -53,15 +55,18 @@ export default function Mapeo() {
 
       const artData = setupFields(fArt.data, m.data.data?.articulo?.fieldMap);
       const almData = setupFields(fAlm.data, m.data.data?.articuloalm?.fieldMap);
+      const cliData = setupFields(fCli.data, m.data.data?.cliente?.fieldMap);
 
       setMapeo({
         ...m.data.data,
         articulo: { ...m.data.data?.articulo, fieldMap: artData.initialFieldMap },
         articuloalm: { ...m.data.data?.articuloalm, fieldMap: almData.initialFieldMap },
+        cliente: { ...m.data.data?.cliente, fieldMap: cliData.initialFieldMap },
       });
 
       setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns });
       setFieldsAlm({ psFields: almData.psFields, erpColumns: almData.erpColumns });
+      setFieldsCli({ psFields: cliData.psFields, erpColumns: cliData.erpColumns });
 
     }).finally(() => setLoading(false));
   }, []);
@@ -72,7 +77,8 @@ export default function Mapeo() {
   };
 
   const setFieldMapVal = (tab, psField, val) => {
-    const targetEntity = tab === 'pricelists' ? 'articulo' : tab;
+    const entityMap = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' };
+    const targetEntity = entityMap[tab] ?? tab;
     setMapeo(p => ({
       ...p,
       [targetEntity]: { ...p[targetEntity], fieldMap: { ...p[targetEntity].fieldMap, [psField]: val } }
@@ -82,9 +88,11 @@ export default function Mapeo() {
   if (loading) return <p className="text-muted" style={{ padding: 32 }}>Cargando…</p>;
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
-  // Both 'articulo' and 'pricelists' share the same underlying data entity (articulo)
-  const currentData = activeTab === 'articuloalm' ? mapeo.articuloalm : mapeo.articulo;
-  const currentFields = activeTab === 'articuloalm' ? fieldsAlm : fieldsArt;
+  // Resolve which data/fields to show based on active tab
+  const entityForTab = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' };
+  const fieldsForTab = { articulo: fieldsArt, pricelists: fieldsArt, articuloalm: fieldsAlm, cliente: fieldsCli };
+  const currentData = mapeo[entityForTab[activeTab] ?? 'articulo'];
+  const currentFields = fieldsForTab[activeTab] ?? fieldsArt;
   const fieldMap = currentData?.fieldMap ?? {};
 
   const psFields = Array.isArray(currentFields.psFields) ? currentFields.psFields : [];
@@ -136,6 +144,11 @@ export default function Mapeo() {
           className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
           onClick={() => { setActiveTab('articuloalm'); setFilter(''); }}>
           🏢 Inventario (articuloalm)
+        </button>
+        <button 
+          className={`btn ${activeTab === 'cliente' ? 'btn--cyan' : 'btn--outline'}`} 
+          onClick={() => { setActiveTab('cliente'); setFilter(''); }}>
+          👥 Clientes (customers)
         </button>
       </div>
 
