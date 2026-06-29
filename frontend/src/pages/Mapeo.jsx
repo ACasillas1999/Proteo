@@ -46,8 +46,9 @@ export default function Mapeo() {
           if (def.type === 'fixedId') {
             initialFieldMap[def.field] = saved !== undefined ? saved : (def.defaultFixed || '');
           } else {
-            const isValidErpCol = saved !== undefined && saved !== null && saved !== '' && erpColumns.includes(String(saved));
-            initialFieldMap[def.field] = isValidErpCol ? saved : '';
+            const valueToUse = saved !== undefined ? saved : (def.defaultErp || '');
+            const isValidErpCol = valueToUse !== '' && erpColumns.includes(String(valueToUse));
+            initialFieldMap[def.field] = isValidErpCol ? valueToUse : '';
           }
         }
         return { psFields, erpColumns, initialFieldMap };

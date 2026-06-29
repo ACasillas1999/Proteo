@@ -90,6 +90,9 @@ router.get('/fields/cliente', async (_req, res) => {
   try {
     const [rows] = await query('SHOW COLUMNS FROM clientes');
     erpColumns = rows.map(r => r.Field);
+    if (!erpColumns.includes('e_mail')) {
+      erpColumns.push('e_mail');
+    }
   } catch { /* DB no disponible o tabla no existe aún */ }
 
   res.json({ ok: true, psFields: PS_FIELDS, erpColumns });

@@ -89,6 +89,12 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await conn.query(`
+      INSERT INTO field_mapping (entity, ps_field, erp_column)
+      VALUES ('cliente', 'Email', 'e_mail')
+      ON DUPLICATE KEY UPDATE erp_column = IF(erp_column IS NULL OR erp_column = '', 'e_mail', erp_column)
+    `);
+
     console.log('[LocalDB] ✓ Tablas verificadas en proteo_db');
   } finally {
     conn.release();

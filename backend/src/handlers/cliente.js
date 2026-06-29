@@ -25,12 +25,12 @@ const PS_FIELDS = [
   // ── Identificación ──
   { field: 'CustomerNumber',            type: 'erpColumn', required: true,  label: 'Número de Cliente',           defaultErp: 'Cliente' },
   { field: 'Name',                      type: 'text',      required: true,  label: 'Nombre / Razón Social',       defaultErp: 'Razon_Social' },
-  { field: 'Email',                     type: 'text',      required: false, label: 'Email',                       defaultErp: null },
+  { field: 'Email',                     type: 'erpColumn', required: false, label: 'Email',                       defaultErp: 'e_mail' },
   { field: 'InvoiceName',              type: 'text',      required: false, label: 'Razón Social (Facturación)',  defaultErp: 'Razon_Social' },
   { field: 'TIN',                       type: 'text',      required: false, label: 'RFC / Tax ID',                defaultErp: 'RFC' },
 
   // ── Dirección ──
-  { field: 'Address1',                  type: 'text',      required: false, label: 'Dirección 1 (Calle)',         defaultErp: 'Calle' },
+  { field: 'Address1',                  type: 'fixed',     required: false, label: 'Dirección 1 (Calle + Números)', fixedValue: 'Automático (Calle + Exterior + Interior)' },
   { field: 'Address2',                  type: 'text',      required: false, label: 'Dirección 2 (Colonia)',       defaultErp: 'Colonia' },
   { field: 'LeftStreet',               type: 'text',      required: false, label: 'Entre calle (izq)',           defaultErp: null },
   { field: 'RightStreet',             type: 'text',      required: false, label: 'Entre calle (der)',           defaultErp: null },
@@ -92,6 +92,17 @@ async function mapCliente(row) {
   for (const def of PS_FIELDS) {
     const { field, type, defaultErp, defaultFixed } = def;
 
+    if (field === 'Address1') {
+      const calle = row.Calle ? String(row.Calle).trim() : '';
+      const exterior = row.Exterior ? String(row.Exterior).trim() : '';
+      const interior = row.Interior ? String(row.Interior).trim() : '';
+      let address = calle;
+      if (exterior) address += ` ${exterior}`;
+      if (interior) address += ` Int. ${interior}`;
+      payload[field] = address.trim() || null;
+      continue;
+    }
+
     if (type === 'fixedId') {
       const val = fieldMap[field] ?? defaultFixed;
       if (val !== undefined && val !== null) {
@@ -114,7 +125,15 @@ async function mapCliente(row) {
       // text | number | boolean | numStr
       const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
       if (!erpCol) {
-        payload[field] = null;
+        if (type === 'boolean') {
+          payload[field] = 0;
+        } else if (type === 'number') {
+          payload[field] = 0;
+        } else if (type === 'numStr') {
+          payload[field] = '0';
+        } else {
+          payload[field] = null;
+        }
         continue;
       }
       const raw = row[erpCol] ?? '';
@@ -125,15 +144,24 @@ async function mapCliente(row) {
     }
   }
 
+  if (!payload.UniqueId && payload.CustomerNumber) {
+    payload.UniqueId = String(payload.CustomerNumber);
+  }
+
   return payload;
 }
 
 async function sync(cambio) {
   const { clave_registro } = cambio;
 
-  // PK de la tabla clientes es "Cliente" (int)
+  // PK de la tabla clientes es "Cliente" (int).
+  // Hacemos LEFT JOIN con clientes_email para obtener el correo del cliente.
   const [rows] = await query(
-    'SELECT * FROM clientes WHERE Cliente = ? LIMIT 1',
+    `SELECT c.*, ce.e_mail AS e_mail 
+     FROM clientes c
+     LEFT JOIN clientes_email ce ON ce.Clave_Cliente = c.Cliente
+     WHERE c.Cliente = ? 
+     LIMIT 1`,
     [clave_registro]
   );
   if (!rows.length) throw new Error(`Cliente '${clave_registro}' no encontrado en ERP`);

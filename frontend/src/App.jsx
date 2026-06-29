@@ -52,7 +52,7 @@ export default function App() {
             <Route path="/"              element={<Dashboard wsEvents={events} />} />
             <Route path="/auditoria"     element={<Auditoria />} />
             <Route path="/payloads"      element={<Payload />} />
-            <Route path="/webhooks"      element={<Webhooks />} />
+            <Route path="/webhooks"      element={<Webhooks wsEvents={events} />} />
             <Route path="/mapeo"         element={<Mapeo />} />
             <Route path="/configuracion" element={<Configuracion />} />
           </Routes>

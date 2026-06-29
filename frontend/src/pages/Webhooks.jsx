@@ -54,13 +54,14 @@ function JsonViewer({ data }) {
   );
 }
 
-export default function Webhooks() {
+export default function Webhooks({ wsEvents = [] }) {
   const [rows,    setRows]    = useState([]);
   const [total,   setTotal]   = useState(0);
   const [page,    setPage]    = useState(1);
   const [filters, setFilters] = useState({ entidad: '', estado: '' });
   const [modal,   setModal]   = useState(null);
   const [loading, setLoading] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState([]);
   const LIMIT = 25;
 
   const load = useCallback(async () => {
@@ -77,6 +78,40 @@ export default function Webhooks() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!wsEvents || wsEvents.length === 0) return;
+    const lastEvent = wsEvents[0];
+    if (!lastEvent) return;
+
+    const ts = new Date(lastEvent.ts || Date.now()).toLocaleTimeString('es-MX');
+    
+    if (lastEvent.event === 'webhook_received') {
+      const { object } = lastEvent.data || {};
+      const newLog = {
+        time: ts,
+        type: 'info',
+        text: `📥 Petición POST recibida - Objeto: '${object}'`
+      };
+      setConsoleLogs(prev => [newLog, ...prev].slice(0, 100));
+      load();
+    } else if (lastEvent.event === 'webhook_processed') {
+      const { entidad, clave_registro, estado, error_msg } = lastEvent.data || {};
+      let type = 'success';
+      let text = `✅ Procesado exitosamente: ${entidad} (${clave_registro})`;
+      if (estado === 2) {
+        type = 'error';
+        text = `❌ Error al procesar: ${entidad} (${clave_registro}) - ${error_msg || 'Error desconocido'}`;
+      }
+      const newLog = {
+        time: ts,
+        type,
+        text
+      };
+      setConsoleLogs(prev => [newLog, ...prev].slice(0, 100));
+      load();
+    }
+  }, [wsEvents, load]);
+
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
@@ -85,6 +120,64 @@ export default function Webhooks() {
         📥 Webhooks Recibidos
         <span>{total} registros</span>
       </h1>
+
+      {/* Real-time console */}
+      <div className="card" style={{ padding: 0, marginBottom: 20, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        <div style={{
+          background: 'var(--surface-header, #1e293b)',
+          padding: '10px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid var(--border)'
+        }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b981' }} />
+            <span style={{ marginLeft: 10, fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
+              Live Webhook Monitor
+            </span>
+          </div>
+          <button
+            className="btn btn--ghost btn--sm"
+            style={{ padding: '4px 8px', fontSize: 11 }}
+            onClick={() => setConsoleLogs([])}
+          >
+            🗑️ Limpiar Consola
+          </button>
+        </div>
+        <div style={{
+          background: '#0f172a',
+          color: '#38bdf8',
+          fontFamily: 'monospace',
+          fontSize: 12,
+          padding: 16,
+          height: 180,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column-reverse',
+          gap: 6
+        }}>
+          {consoleLogs.map((log, idx) => {
+            let color = '#38bdf8'; // Blue for info
+            if (log.type === 'success') color = '#4ade80'; // Green for success
+            if (log.type === 'error') color = '#f87171'; // Red for error
+            
+            return (
+              <div key={idx} style={{ display: 'flex', gap: 8 }}>
+                <span style={{ color: '#64748b' }}>[{log.time}]</span>
+                <span style={{ color }}>{log.text}</span>
+              </div>
+            );
+          })}
+          {consoleLogs.length === 0 && (
+            <div style={{ color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '60px 0' }}>
+              📟 Consola lista. Esperando peticiones webhook en tiempo real...
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="filters">
