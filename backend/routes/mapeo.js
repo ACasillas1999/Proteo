@@ -3,6 +3,7 @@ const router = require('express').Router();
 const ps     = require('../src/powersales');
 const {
   getFieldMapping, saveFieldMapping,
+  getMappingForBranch, saveOverrideMapping,
   getConfig, setConfig,
 } = require('../src/localdb');
 
@@ -96,6 +97,40 @@ router.get('/fields/cliente', async (_req, res) => {
   } catch { /* DB no disponible o tabla no existe aún */ }
 
   res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
+});
+
+// GET /api/mapeo/branch/:branchId — sucursales jalan su mapeo merged (global + overrides)
+router.get('/branch/:branchId', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    if (!branchId) return res.status(400).json({ error: 'branchId inválido' });
+
+    const [articulo, articuloalm, cliente] = await Promise.all([
+      getMappingForBranch('articulo',    branchId),
+      getMappingForBranch('articuloalm', branchId),
+      getMappingForBranch('cliente',     branchId),
+    ]);
+    res.json({ ok: true, data: { articulo, articuloalm, cliente } });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /api/mapeo/branch/:branchId — guarda overrides de una sucursal específica
+router.put('/branch/:branchId', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    if (!branchId) return res.status(400).json({ error: 'branchId inválido' });
+
+    const { articulo, articuloalm, cliente } = req.body;
+    if (articulo)    await saveOverrideMapping(branchId, 'articulo',    articulo);
+    if (articuloalm) await saveOverrideMapping(branchId, 'articuloalm', articuloalm);
+    if (cliente)     await saveOverrideMapping(branchId, 'cliente',     cliente);
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // GET /api/mapeo/ps-catalogs — trae categorías, marcas, etc de PowerSales

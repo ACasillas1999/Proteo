@@ -81,11 +81,13 @@ async function migrate() {
         datos           JSON         DEFAULT NULL,
         estado          TINYINT      NOT NULL DEFAULT 0 COMMENT '1=ok, 2=error',
         error_msg       TEXT         DEFAULT NULL,
+        branch_id       INT          DEFAULT NULL,
         fecha_recepcion DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_entidad   (entidad),
         INDEX idx_estado    (estado),
         INDEX idx_clave     (clave_registro),
-        INDEX idx_fecha     (fecha_recepcion)
+        INDEX idx_fecha     (fecha_recepcion),
+        INDEX idx_branch    (branch_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -93,6 +95,35 @@ async function migrate() {
       INSERT INTO field_mapping (entity, ps_field, erp_column)
       VALUES ('cliente', 'Email', 'e_mail')
       ON DUPLICATE KEY UPDATE erp_column = IF(erp_column IS NULL OR erp_column = '', 'e_mail', erp_column)
+    `);
+
+    // Migration guards for instances created before multi-branch support
+    try { await conn.query(`ALTER TABLE webhook_logs ADD COLUMN branch_id INT DEFAULT NULL`); } catch {}
+    try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_branch (branch_id)`); } catch {}
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS branch_status (
+        branch_id     INT          NOT NULL PRIMARY KEY,
+        last_seen_at  DATETIME     NOT NULL,
+        last_poll_id  INT          DEFAULT 0,
+        erp_connected TINYINT(1)   DEFAULT 0,
+        app_version   VARCHAR(50)  DEFAULT NULL,
+        hostname      VARCHAR(100) DEFAULT NULL,
+        updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS field_mapping_overrides (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        branch_id   INT          NOT NULL,
+        entity      VARCHAR(50)  NOT NULL,
+        ps_field    VARCHAR(100) NOT NULL,
+        erp_column  VARCHAR(100) DEFAULT NULL,
+        fixed_value VARCHAR(255) DEFAULT NULL,
+        updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_branch_entity_field (branch_id, entity, ps_field)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
     console.log('[LocalDB] ✓ Tablas verificadas en proteo_db');
@@ -192,26 +223,84 @@ async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, pa
 /**
  * Guarda el log de un webhook recibido.
  */
-async function saveWebhookLog(entidad, claveRegistro, datos, estado, errorMsg = null) {
+async function saveWebhookLog(entidad, claveRegistro, datos, estado, errorMsg = null, branchId = null) {
   const datosJson = datos ? JSON.stringify(datos) : null;
-  
+
   await localQuery(
     `INSERT INTO webhook_logs
-       (entidad, clave_registro, datos, estado, error_msg)
-     VALUES (?, ?, ?, ?, ?)`,
+       (entidad, clave_registro, datos, estado, error_msg, branch_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     [
       entidad,
       claveRegistro,
       datosJson,
       estado,
-      errorMsg ? String(errorMsg).substring(0, 2000) : null
+      errorMsg ? String(errorMsg).substring(0, 2000) : null,
+      branchId ?? null,
     ]
   );
+}
+
+// ── Branch mapping overrides ─────────────────────────────────────────────────
+
+async function getMappingForBranch(entity, branchId) {
+  const [global]    = await localQuery('SELECT ps_field, erp_column, fixed_value FROM field_mapping WHERE entity = ?', [entity]);
+  const [overrides] = await localQuery('SELECT ps_field, erp_column, fixed_value FROM field_mapping_overrides WHERE entity = ? AND branch_id = ?', [entity, branchId]);
+
+  const map = {};
+  for (const r of global)    map[r.ps_field] = r.erp_column ?? r.fixed_value ?? null;
+  for (const r of overrides) map[r.ps_field] = r.erp_column ?? r.fixed_value ?? null;
+  return map;
+}
+
+async function saveOverrideMapping(branchId, entity, mappings) {
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute('DELETE FROM field_mapping_overrides WHERE branch_id = ? AND entity = ?', [branchId, entity]);
+    for (const [psField, val] of Object.entries(mappings)) {
+      const isFixed = typeof val === 'number';
+      await conn.execute(
+        'INSERT INTO field_mapping_overrides (branch_id, entity, ps_field, erp_column, fixed_value) VALUES (?, ?, ?, ?, ?)',
+        [branchId, entity, psField, isFixed ? null : (val || null), isFixed ? String(val) : null]
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+// ── Branch status (heartbeat) ────────────────────────────────────────────────
+
+async function upsertBranchStatus(branchId, { lastPollId = 0, erpConnected = 0, version = null, hostname = null } = {}) {
+  await localQuery(
+    `INSERT INTO branch_status (branch_id, last_seen_at, last_poll_id, erp_connected, app_version, hostname)
+     VALUES (?, NOW(), ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       last_seen_at  = NOW(),
+       last_poll_id  = VALUES(last_poll_id),
+       erp_connected = VALUES(erp_connected),
+       app_version   = VALUES(app_version),
+       hostname      = VALUES(hostname)`,
+    [branchId, lastPollId, erpConnected ? 1 : 0, version, hostname]
+  );
+}
+
+async function getAllBranchStatuses() {
+  const [rows] = await localQuery('SELECT * FROM branch_status ORDER BY branch_id ASC');
+  return rows;
 }
 
 module.exports = {
   localQuery, migrate,
   getConfig, setConfig, getAllConfig,
   getFieldMapping, saveFieldMapping,
+  getMappingForBranch, saveOverrideMapping,
   saveSyncHistory, saveWebhookLog,
+  upsertBranchStatus, getAllBranchStatuses,
 };

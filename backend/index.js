@@ -1,23 +1,26 @@
 'use strict';
 require('dotenv').config();
 
+const path    = require('path');
 const express = require('express');
 const cors    = require('cors');
 const http    = require('http');
 
-const { initWebSocket } = require('./src/websocket');
-const { startBinlog }   = require('./src/binlog');
-const { startPoller }   = require('./src/processor');
-const { migrate }       = require('./src/localdb');
+const { initWebSocket }     = require('./src/websocket');
+const { startBinlog }       = require('./src/binlog');
+const { startPoller }       = require('./src/processor');
+const { migrate }           = require('./src/localdb');
+const { startWebhookPoller } = require('./src/webhookPoller');
 
-const statusRouter      = require('./routes/status');
-const cambiosRouter     = require('./routes/cambios');
-const configRouter      = require('./routes/config');
-const workerRouter      = require('./routes/worker');
-const mapeoRouter       = require('./routes/mapeo');
-const syncHistoryRouter = require('./routes/syncHistory');
-const webhooksRouter    = require('./routes/webhooks');
+const statusRouter        = require('./routes/status');
+const cambiosRouter       = require('./routes/cambios');
+const configRouter        = require('./routes/config');
+const workerRouter        = require('./routes/worker');
+const mapeoRouter         = require('./routes/mapeo');
+const syncHistoryRouter   = require('./routes/syncHistory');
+const webhooksRouter      = require('./routes/webhooks');
 const grupoascencioRouter = require('./routes/grupoascencio');
+const branchesRouter      = require('./routes/branches');
 
 const app = express();
 app.use(cors());
@@ -32,9 +35,18 @@ app.use('/api/mapeo',        mapeoRouter);         // GET/PUT /api/mapeo
 app.use('/api/sync-history', syncHistoryRouter);   // GET /api/sync-history
 app.use('/api/webhooks',     webhooksRouter);      // POST /api/webhooks/...
 app.use('/api/grupoascencio', grupoascencioRouter); // GET/POST /api/grupoascencio/pricelists...
+app.use('/api/branches',     branchesRouter);       // POST /api/branches/heartbeat, GET /status
+
+// Frontend estático (build de React)
+const frontendDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/ws')) return next();
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
 
 // Health check
-app.get('/', (_req, res) => res.json({ ok: true, service: 'powersales-sync' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'powersales-sync' }));
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
 migrate()
@@ -50,6 +62,9 @@ migrate()
 
     // ── Background Poller
     startPoller(5000);
+
+    // ── Webhook Poller (solo sucursales con CENTRAL_URL en .env)
+    startWebhookPoller(30_000);
 
     // ── Binlog CDC
     startBinlog().catch(err => {
