@@ -82,38 +82,63 @@ async function handleCustomerUpdate(key, data) {
   }
 
   try {
-    const [clientRows] = await query('SELECT Cliente FROM clientes WHERE Cliente = ? LIMIT 1', [customerNumber]);
-    if (clientRows.length === 0) {
-      console.log(`[WEBHOOK] Cliente no encontrado en BD local (Cliente: ${customerNumber})`);
-      await saveWebhookLog('cliente', customerNumber, data, 2, 'Cliente no encontrado en BD local');
-      return;
-    }
-
-    const fieldMap     = await getFieldMapping('cliente');
-    const updateFields = [];
-    const updateValues = [];
-    let emailValue     = undefined;
+    const fieldMap  = await getFieldMapping('cliente');
+    const colNames  = []; // ERP column names
+    const colValues = []; // values for those columns
+    let emailValue  = undefined;
 
     for (const def of CLIENTE_FIELDS) {
       if (data[def.field] !== undefined) {
         const erpCol = fieldMap[def.field] !== undefined ? fieldMap[def.field] : def.defaultErp;
         if (erpCol && def.type !== 'fixed' && def.type !== 'fixedId') {
           if (erpCol === 'e_mail') { emailValue = data[def.field]; continue; }
-          updateFields.push(`${erpCol} = ?`);
           let val = data[def.field];
-          if (def.type === 'boolean')                       val = val ? 1 : 0;
+          if (def.type === 'boolean')                            val = val ? 1 : 0;
           else if (def.type === 'number' || def.type === 'numStr') val = val === null ? null : Number(val);
-          updateValues.push(val);
+          colNames.push(erpCol);
+          colValues.push(val);
         }
       }
     }
 
+    // lookupCol = columna ERP que corresponde a CustomerNumber (IdGlobal, Cliente, etc.)
+    // Se configura en Mapeo UI: CustomerNumber → IdGlobal
+    const lookupCol = (fieldMap['CustomerNumber'] != null && fieldMap['CustomerNumber'] !== '')
+      ? fieldMap['CustomerNumber']
+      : 'IdGlobal';
+
+    const [clientRows] = await query(
+      `SELECT * FROM clientes WHERE ${lookupCol} = ? LIMIT 1`,
+      [customerNumber]
+    );
     let updatedSomething = false;
 
-    if (updateFields.length > 0) {
-      updateValues.push(customerNumber);
-      await query(`UPDATE clientes SET ${updateFields.join(', ')} WHERE Cliente = ?`, updateValues);
+    if (clientRows.length === 0) {
+      // INSERT — cliente nuevo
+      // colNames ya incluye lookupCol desde el loop (CustomerNumber → lookupCol)
+      const insertCols = colNames.includes(lookupCol)
+        ? colNames
+        : [lookupCol, ...colNames];
+      const insertVals = colNames.includes(lookupCol)
+        ? colValues
+        : [customerNumber, ...colValues];
+      const placeholders = insertCols.map(() => '?').join(', ');
+      await query(
+        `INSERT INTO clientes (${insertCols.join(', ')}) VALUES (${placeholders})`,
+        insertVals
+      );
+      console.log(`[WEBHOOK] Cliente creado en BD local (${lookupCol}: ${customerNumber})`);
       updatedSomething = true;
+    } else if (colNames.length > 0) {
+      // UPDATE — cliente existente, filtrar lookupCol del SET (no actualizar el identificador)
+      const updateCols = colNames.filter(c => c !== lookupCol);
+      const updateVals = colValues.filter((_, i) => colNames[i] !== lookupCol);
+      if (updateCols.length > 0) {
+        const setClauses = updateCols.map(c => `${c} = ?`).join(', ');
+        await query(`UPDATE clientes SET ${setClauses} WHERE ${lookupCol} = ?`, [...updateVals, customerNumber]);
+        console.log(`[WEBHOOK] Cliente actualizado en BD local (${lookupCol}: ${customerNumber})`);
+        updatedSomething = true;
+      }
     }
 
     if (emailValue !== undefined) {
@@ -129,7 +154,6 @@ async function handleCustomerUpdate(key, data) {
         `UPDATE Cambios SET sincronizado = 1, fecha_sync = NOW() WHERE tabla = 'clientes' AND clave_registro = ? AND sincronizado = 0`,
         [customerNumber]
       ).catch(() => {});
-      console.log(`[WEBHOOK] Cliente actualizado exitosamente en BD local (Cliente: ${customerNumber})`);
       await saveWebhookLog('cliente', customerNumber, data, 1, null);
     } else {
       console.log(`[WEBHOOK] Ningún campo mapeado para actualizar en cliente (Cliente: ${customerNumber})`);
