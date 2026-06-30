@@ -6,9 +6,8 @@ const { getConfig, setConfig, saveWebhookLog, saveFieldMapping } = require('./lo
 const { handleProductUpdate, handleCustomerUpdate } = require('./webhookHandlers');
 const { broadcast }                         = require('./websocket');
 
-const POLL_INTERVAL_MS   = 30_000;
-const MAPPING_SYNC_MS    = 24 * 60 * 60 * 1000; // 24h
-const HEARTBEAT_INTERVAL = 60_000;
+const POLL_INTERVAL_MS = 30_000;
+const MAPPING_SYNC_MS  = 24 * 60 * 60 * 1000; // 24h
 
 let _pollTimer      = null;
 let _heartbeatTimer = null;
@@ -19,6 +18,16 @@ function buildKey(entidad, claveRegistro) {
   if (entidad === 'articulo') return { SKU: claveRegistro };
   if (entidad === 'cliente')  return { CustomerNumber: claveRegistro };
   return { id: claveRegistro };
+}
+
+// Campos que NUNCA se sobreescriben desde maestro — siempre vienen del .env local
+const LOCAL_ONLY_FIELDS = ['BranchId'];
+
+function filterLocalFields(mapping) {
+  if (!mapping || typeof mapping !== 'object') return mapping;
+  const filtered = { ...mapping };
+  for (const field of LOCAL_ONLY_FIELDS) delete filtered[field];
+  return filtered;
 }
 
 async function syncMapping() {
@@ -35,11 +44,12 @@ async function syncMapping() {
     const data = res.data?.data;
     if (!data) return;
 
-    if (data.articulo)    await saveFieldMapping('articulo',    data.articulo);
-    if (data.articuloalm) await saveFieldMapping('articuloalm', data.articuloalm);
-    if (data.cliente)     await saveFieldMapping('cliente',     data.cliente);
+    // BranchId se excluye — cada sucursal usa su propio PS_BRANCH_ID del .env
+    if (data.articulo)    await saveFieldMapping('articulo',    filterLocalFields(data.articulo));
+    if (data.articuloalm) await saveFieldMapping('articuloalm', filterLocalFields(data.articuloalm));
+    if (data.cliente)     await saveFieldMapping('cliente',     filterLocalFields(data.cliente));
 
-    console.log(`[MAPEO SYNC] Mapeo actualizado desde maestro para branch ${branchId}`);
+    console.log(`[MAPEO SYNC] Mapeo actualizado desde maestro para branch ${branchId} (BranchId preservado local)`);
   } catch (err) {
     console.error('[MAPEO SYNC] Error al sincronizar mapeo:', err.message);
   }

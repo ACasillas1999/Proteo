@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useMode } from '../context/ModeContext.jsx';
 
 const TYPE_BADGE = {
   text:       { label: 'Texto',      color: '#22d3ee' },
@@ -14,6 +15,7 @@ const TYPE_BADGE = {
 };
 
 export default function Mapeo() {
+  const { mode } = useMode();
   const [activeTab, setActiveTab] = useState('articulo');
   const [mapeo,   setMapeo]   = useState(null);
   
@@ -103,6 +105,9 @@ export default function Mapeo() {
     // 1. Filtrar por pestaña
     if (activeTab === 'articulo' && f.type === 'priceList') return false;
     if (activeTab === 'pricelists' && f.type !== 'priceList') return false;
+
+    // En maestro, BranchId no aplica — cada sucursal usa su .env
+    if (mode === 'master' && f.field === 'BranchId') return false;
 
     // 2. Filtrar por texto
     if (filter) {
