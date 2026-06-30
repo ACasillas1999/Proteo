@@ -27,6 +27,27 @@ export default function Mapeo() {
   const [saved,   setSaved]   = useState(false);
   const [filter,  setFilter]  = useState('');
 
+  // Vista por sucursal (solo maestro)
+  const [branches,      setBranches]      = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState(null); // null = global
+  const [branchMapeo,   setBranchMapeo]   = useState(null);   // effective map por entidad
+
+  // Cargar sucursales conocidas (solo maestro)
+  useEffect(() => {
+    if (mode !== 'master') return;
+    axios.get('/api/branches/digest')
+      .then(r => setBranches(r.data.data ?? []))
+      .catch(() => {});
+  }, [mode]);
+
+  // Cargar mapeo efectivo cuando se selecciona una sucursal
+  useEffect(() => {
+    if (selectedBranch === null) { setBranchMapeo(null); return; }
+    axios.get(`/api/mapeo/branch/${selectedBranch}`)
+      .then(r => setBranchMapeo(r.data.data ?? null))
+      .catch(() => setBranchMapeo(null));
+  }, [selectedBranch]);
+
   useEffect(() => {
     Promise.all([
       axios.get('/api/mapeo'),
@@ -123,15 +144,40 @@ export default function Mapeo() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <h1 className="section-title" style={{ margin: 0 }}>🗺️ Mapeo de Campos</h1>
+
+        {/* Selector de sucursal — solo maestro */}
+        {mode === 'master' && (
+          <select
+            value={selectedBranch ?? ''}
+            onChange={e => setSelectedBranch(e.target.value === '' ? null : parseInt(e.target.value))}
+            style={{ borderRadius: 'var(--radius)', minWidth: 180, fontWeight: 600 }}
+          >
+            <option value="">🌐 Global (editable)</option>
+            {branches.map(b => (
+              <option key={b.branch_id} value={b.branch_id}>
+                Sucursal {b.branch_id}{b.hostname ? ` — ${b.hostname}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+
         <input
           placeholder="🔍 Filtrar campos…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
           style={{ flex: 1, minWidth: 180, maxWidth: 280, borderRadius: 'var(--radius)' }}
         />
-        <button className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} onClick={save}>
-          {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
-        </button>
+        {/* Guardar solo en vista global */}
+        {selectedBranch === null && (
+          <button className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} onClick={save}>
+            {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
+          </button>
+        )}
+        {selectedBranch !== null && (
+          <span style={{ fontSize: 12, color: '#fb923c', fontWeight: 600 }}>
+            Solo lectura — mapeo efectivo de sucursal {selectedBranch}
+          </span>
+        )}
       </div>
 
       {/* Tabs */}
@@ -190,6 +236,36 @@ export default function Mapeo() {
               const { field, type, label, required, defaultErp, fixedValue } = def;
               const badge = TYPE_BADGE[type] ?? TYPE_BADGE.text;
               const rowBg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.02)';
+
+              // Vista read-only de sucursal seleccionada
+              if (selectedBranch !== null) {
+                const entityKey = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' }[activeTab];
+                const effectiveVal = branchMapeo?.[entityKey]?.[field];
+                const globalVal    = fieldMap[field];
+                const isOverride   = effectiveVal !== undefined && String(effectiveVal) !== String(globalVal ?? '');
+                return (
+                  <tr key={field} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
+                    <td style={{ padding: '9px 10px' }}>
+                      <code style={{ background: 'var(--surface2)', padding: '2px 7px', borderRadius: 4, fontSize: 12 }}>{field}</code>
+                    </td>
+                    <td style={{ padding: '9px 6px', color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
+                    <td style={{ padding: '9px 6px', textAlign: 'center' }}>
+                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'var(--surface2)', color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                    </td>
+                    <td style={{ padding: '9px 6px', textAlign: 'center' }}>
+                      {required ? <span style={{ color: '#f87171', fontSize: 13, fontWeight: 700 }}>✓</span> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 6px' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 13, color: isOverride ? '#fb923c' : '#d1d5db' }}>
+                        {effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : <span style={{ color: '#4b5563', fontStyle: 'italic' }}>sin mapear</span>}
+                      </span>
+                      {isOverride && (
+                        <span style={{ marginLeft: 8, fontSize: 10, background: '#431407', color: '#fb923c', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>override</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              }
 
               let control;
               if (type === 'fixed') {

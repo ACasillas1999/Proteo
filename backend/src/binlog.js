@@ -70,9 +70,15 @@ function startBinlog() {
       }
     });
 
+    // serverId debe ser único por slave. Usa BINLOG_SERVER_ID en .env, o deriva de PS_BRANCH_ID.
+    // El servidor MySQL master suele ser server_id=1 — no usar 1 aquí.
+    const serverId = parseInt(process.env.BINLOG_SERVER_ID)
+      || (100 + parseInt(process.env.PS_BRANCH_ID || 0));
+
     _zongji.start({
       includeEvents: ['tablemap', 'writerows'],
       includeSchema: { [process.env.MYSQL_DB]: ['Cambios'] },
+      serverId,
     });
   });
 }
