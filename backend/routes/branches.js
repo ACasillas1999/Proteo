@@ -45,6 +45,32 @@ router.post('/heartbeat', authenticateWebhook, async (req, res) => {
   }
 });
 
+// GET /api/branches/digest — estado + pendientes por sucursal (solo maestro)
+router.get('/digest', async (_req, res) => {
+  try {
+    const { getAllBranchStatuses, localQuery } = require('../src/localdb');
+    const statuses = await getAllBranchStatuses();
+    const now = Date.now();
+
+    const data = await Promise.all(statuses.map(async s => {
+      const [rows] = await localQuery(
+        'SELECT COUNT(*) as pending FROM webhook_logs WHERE branch_id = ? AND id > ?',
+        [s.branch_id, s.last_poll_id || 0]
+      );
+      return {
+        ...s,
+        pending_count: rows[0].pending,
+        online: s.last_seen_at ? (now - new Date(s.last_seen_at).getTime()) < 2 * 60 * 1000 : false,
+      };
+    }));
+
+    res.json({ ok: true, data });
+  } catch (err) {
+    console.error('[BRANCHES DIGEST] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/branches/status — dashboard del maestro consulta el estado de todas las sucursales
 router.get('/status', async (_req, res) => {
   try {

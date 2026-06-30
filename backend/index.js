@@ -45,6 +45,14 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
+// Mode detection — frontend usa esto para saber si es maestro o sucursal
+app.get('/api/mode', (_req, res) => {
+  res.json({
+    mode:     process.env.CENTRAL_URL ? 'branch' : 'master',
+    branchId: process.env.PS_BRANCH_ID ? parseInt(process.env.PS_BRANCH_ID) : null,
+  });
+});
+
 // Health check
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'powersales-sync' }));
 

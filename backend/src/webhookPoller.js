@@ -106,6 +106,7 @@ async function pollWebhooks() {
       }
 
       await setConfig('last_webhook_id', maxId);
+      await setConfig('last_poll_at', new Date().toISOString());
       broadcast('webhook_poll', { fetched: records.length, lastId: maxId });
     }
 
