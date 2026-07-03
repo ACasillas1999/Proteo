@@ -354,3 +354,58 @@ tr.clickable { cursor: pointer; }
 .gap-8 { gap: 8px; }
 .gap-16 { gap: 16px; }
 .ml-auto { margin-left: auto; }
+
+/* ─── Sidebar Right (Sucursales en Mapeo) ─────────────────────────────── */
+.sidebar-right {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 240px;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  overflow-y: auto;
+}
+.sidebar-right__label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  padding: 16px 20px 4px;
+  text-transform: uppercase;
+}
+.sidebar-right__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  margin-left: 12px;
+  transition: all .15s;
+  cursor: pointer;
+}
+.sidebar-right__link:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+.sidebar-right__link.active {
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.08);
+  border-right: 3px solid var(--cyan);
+  padding-right: 17px;
+}
+.sidebar-right__link.active-branch {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.08);
+  border-right: 3px solid #fb923c;
+  padding-right: 17px;
+}

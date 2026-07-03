@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useMode } from '../context/ModeContext.jsx';
+import { Globe, Building2, Star } from 'lucide-react';
 
 const TYPE_BADGE = {
   text:       { label: 'Texto',      color: '#22d3ee' },
@@ -18,10 +19,11 @@ export default function Mapeo() {
   const { mode } = useMode();
   const [activeTab, setActiveTab] = useState('articulo');
   const [mapeo,   setMapeo]   = useState(null);
+  const [dbRef,   setDbRef]   = useState({ host: '', name: '' });
   
-  const [fieldsArt, setFieldsArt] = useState({ psFields: [], erpColumns: [] });
-  const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [] });
-  const [fieldsCli, setFieldsCli] = useState({ psFields: [], erpColumns: [] });
+  const [fieldsArt, setFieldsArt] = useState({ psFields: [], erpColumns: [], dbConnected: true });
+  const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [], dbConnected: true });
+  const [fieldsCli, setFieldsCli] = useState({ psFields: [], erpColumns: [], dbConnected: true });
 
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState(false);
@@ -59,6 +61,7 @@ export default function Mapeo() {
       const setupFields = (fData, savedMap) => {
         const psFields = fData.psFields ?? [];
         const erpColumns = fData.erpColumns ?? [];
+        const dbConnected = fData.dbConnected !== false;
         const fieldMap = savedMap ?? {};
         
         const initialFieldMap = {};
@@ -70,11 +73,15 @@ export default function Mapeo() {
             initialFieldMap[def.field] = saved !== undefined ? saved : (def.defaultFixed || '');
           } else {
             const valueToUse = saved !== undefined ? saved : (def.defaultErp || '');
-            const isValidErpCol = valueToUse !== '' && erpColumns.includes(String(valueToUse));
-            initialFieldMap[def.field] = isValidErpCol ? valueToUse : '';
+            if (dbConnected) {
+              const isValidErpCol = valueToUse !== '' && erpColumns.includes(String(valueToUse));
+              initialFieldMap[def.field] = isValidErpCol ? valueToUse : '';
+            } else {
+              initialFieldMap[def.field] = valueToUse;
+            }
           }
         }
-        return { psFields, erpColumns, initialFieldMap };
+        return { psFields, erpColumns, dbConnected, initialFieldMap };
       };
 
       const artData = setupFields(fArt.data, m.data.data?.articulo?.fieldMap);
@@ -88,9 +95,14 @@ export default function Mapeo() {
         cliente: { ...m.data.data?.cliente, fieldMap: cliData.initialFieldMap },
       });
 
-      setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns });
-      setFieldsAlm({ psFields: almData.psFields, erpColumns: almData.erpColumns });
-      setFieldsCli({ psFields: cliData.psFields, erpColumns: cliData.erpColumns });
+      setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns, dbConnected: artData.dbConnected });
+      setFieldsAlm({ psFields: almData.psFields, erpColumns: almData.erpColumns, dbConnected: almData.dbConnected });
+      setFieldsCli({ psFields: cliData.psFields, erpColumns: cliData.erpColumns, dbConnected: cliData.dbConnected });
+
+      setDbRef({
+        host: fArt.data.dbHost || 'localhost',
+        name: fArt.data.dbName || ''
+      });
 
     }).finally(() => setLoading(false));
   }, []);
@@ -118,6 +130,7 @@ export default function Mapeo() {
   const currentData = mapeo[entityForTab[activeTab] ?? 'articulo'];
   const currentFields = fieldsForTab[activeTab] ?? fieldsArt;
   const fieldMap = currentData?.fieldMap ?? {};
+  const dbConnected = currentFields.dbConnected !== false;
 
   const psFields = Array.isArray(currentFields.psFields) ? currentFields.psFields : [];
   const erpCols  = currentFields.erpColumns ?? [];
@@ -140,190 +153,333 @@ export default function Mapeo() {
   });
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <h1 className="section-title" style={{ margin: 0 }}>🗺️ Mapeo de Campos</h1>
+    <div style={{ 
+      display: 'flex', 
+      gap: 0, 
+      alignItems: 'stretch', 
+      width: 'calc(100% + 48px)', 
+      margin: '-24px -24px -24px -24px',
+      minHeight: 'calc(100vh - 56px)',
+      position: 'relative'
+    }}>
+      {/* Contenido Principal (Mapeo) */}
+      <div style={{ flex: 1, minWidth: 0, padding: 24, marginRight: 240 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+          <h1 className="section-title" style={{ margin: 0 }}>🗺️ Mapeo de Campos</h1>
 
-        {/* Selector de sucursal — solo maestro */}
-        {mode === 'master' && (
-          <select
-            value={selectedBranch ?? ''}
-            onChange={e => setSelectedBranch(e.target.value === '' ? null : parseInt(e.target.value))}
-            style={{ borderRadius: 'var(--radius)', minWidth: 180, fontWeight: 600 }}
-          >
-            <option value="">🌐 Global (editable)</option>
-            {branches.map(b => (
-              <option key={b.branch_id} value={b.branch_id}>
-                Sucursal {b.branch_id}{b.hostname ? ` — ${b.hostname}` : ''}
-              </option>
-            ))}
-          </select>
+          {/* Selector de sucursal — solo maestro */}
+          {mode === 'master' && (
+            <select
+              value={selectedBranch ?? ''}
+              onChange={e => setSelectedBranch(e.target.value === '' ? null : parseInt(e.target.value))}
+              style={{ borderRadius: 'var(--radius)', minWidth: 180, fontWeight: 600 }}
+            >
+              <option value="">🌐 Global (editable)</option>
+              {branches.map(b => (
+                <option key={b.branch_id} value={b.branch_id}>
+                  Sucursal {b.branch_id}{b.hostname ? ` — ${b.hostname}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <input
+            placeholder="🔍 Filtrar campos…"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            style={{ flex: 1, minWidth: 180, maxWidth: 280, borderRadius: 'var(--radius)' }}
+          />
+          {/* Guardar solo en vista global */}
+          {selectedBranch === null && (
+            <button 
+              className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} 
+              onClick={save}
+              disabled={!dbConnected}
+              style={!dbConnected ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+            >
+              {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
+            </button>
+          )}
+          {selectedBranch !== null && (
+            <span style={{ fontSize: 12, color: '#fb923c', fontWeight: 600 }}>
+              Solo lectura — mapeo efectivo de sucursal {selectedBranch}
+            </span>
+          )}
+        </div>
+
+        {/* Alerta de Base de Datos Desconectada */}
+        {!dbConnected && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            color: '#f87171',
+            padding: '12px 16px',
+            borderRadius: 'var(--radius)',
+            marginBottom: 20,
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10
+          }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>
+              <strong>Sin conexión a la Base de Datos del ERP (Principal):</strong> 
+              Los mapeos guardados localmente se muestran en rojo y han sido bloqueados temporalmente para evitar modificaciones inconsistentes.
+            </span>
+          </div>
         )}
 
-        <input
-          placeholder="🔍 Filtrar campos…"
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          style={{ flex: 1, minWidth: 180, maxWidth: 280, borderRadius: 'var(--radius)' }}
-        />
-        {/* Guardar solo en vista global */}
-        {selectedBranch === null && (
-          <button className={`btn ${saved ? 'btn--green' : 'btn--cyan'}`} onClick={save}>
-            {saved ? '✓ Guardado' : '💾 Guardar mapeo'}
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' }}>
+          <button 
+            className={`btn ${activeTab === 'articulo' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('articulo'); setFilter(''); }}>
+            📦 Artículos (productos)
           </button>
-        )}
-        {selectedBranch !== null && (
-          <span style={{ fontSize: 12, color: '#fb923c', fontWeight: 600 }}>
-            Solo lectura — mapeo efectivo de sucursal {selectedBranch}
-          </span>
-        )}
-      </div>
+          <button 
+            className={`btn ${activeTab === 'pricelists' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('pricelists'); setFilter(''); }}>
+            💲 Listas de Precios
+          </button>
+          <button 
+            className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('articuloalm'); setFilter(''); }}>
+            🏢 Inventario (articuloalm)
+          </button>
+          <button 
+            className={`btn ${activeTab === 'cliente' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('cliente'); setFilter(''); }}>
+            👥 Clientes (customers)
+          </button>
+        </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' }}>
-        <button 
-          className={`btn ${activeTab === 'articulo' ? 'btn--cyan' : 'btn--outline'}`} 
-          onClick={() => { setActiveTab('articulo'); setFilter(''); }}>
-          📦 Artículos (productos)
-        </button>
-        <button 
-          className={`btn ${activeTab === 'pricelists' ? 'btn--cyan' : 'btn--outline'}`} 
-          onClick={() => { setActiveTab('pricelists'); setFilter(''); }}>
-          💲 Listas de Precios
-        </button>
-        <button 
-          className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
-          onClick={() => { setActiveTab('articuloalm'); setFilter(''); }}>
-          🏢 Inventario (articuloalm)
-        </button>
-        <button 
-          className={`btn ${activeTab === 'cliente' ? 'btn--cyan' : 'btn--outline'}`} 
-          onClick={() => { setActiveTab('cliente'); setFilter(''); }}>
-          👥 Clientes (customers)
-        </button>
-      </div>
-
-      {/* Leyenda */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
-        {Object.entries(TYPE_BADGE).map(([k, v]) => (
-          <span key={k} style={{
+        {/* Leyenda */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+          {Object.entries(TYPE_BADGE).map(([k, v]) => (
+            <span key={k} style={{
+              fontSize: 11, padding: '3px 10px', borderRadius: 20,
+              background: 'var(--surface2)', color: v.color, fontWeight: 600,
+            }}>● {v.label}</span>
+          ))}
+          {/* Leyenda adicional para priceList */}
+          <span style={{
             fontSize: 11, padding: '3px 10px', borderRadius: 20,
-            background: 'var(--surface2)', color: v.color, fontWeight: 600,
-          }}>● {v.label}</span>
-        ))}
-        {/* Leyenda adicional para priceList */}
-        <span style={{
-          fontSize: 11, padding: '3px 10px', borderRadius: 20,
-          background: 'var(--surface2)', color: '#4ade80', fontWeight: 600,
-        }}>● Lista de Precio</span>
-      </div>
+            background: 'var(--surface2)', color: '#4ade80', fontWeight: 600,
+          }}>● Lista de Precio</span>
+        </div>
 
-      {/* Tabla */}
-      <div className="card" style={{ overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--surface2)' }}>
-              <th style={{ textAlign: 'left', padding: '10px 10px', color: 'var(--text-muted)', width: 170 }}>Campo PowerSales</th>
-              <th style={{ textAlign: 'left', padding: '10px 6px', color: 'var(--text-muted)', width: 150 }}>Descripción</th>
-              <th style={{ textAlign: 'center', padding: '10px 6px', color: 'var(--text-muted)', width: 90 }}>Tipo</th>
-              <th style={{ textAlign: 'center', padding: '10px 6px', color: 'var(--text-muted)', width: 60 }}>Req.</th>
-              <th style={{ textAlign: 'left', padding: '10px 6px', color: 'var(--text-muted)' }}>Valor / Columna ERP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleFields.map((def, i) => {
-              const { field, type, label, required, defaultErp, fixedValue } = def;
-              const badge = TYPE_BADGE[type] ?? TYPE_BADGE.text;
-              const rowBg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.02)';
+        {/* Tabla */}
+        <div className="card" style={{ overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--surface2)' }}>
+                <th style={{ textAlign: 'left', padding: '10px 10px', color: 'var(--text-muted)', width: 170 }}>Campo PowerSales</th>
+                <th style={{ textAlign: 'left', padding: '10px 6px', color: 'var(--text-muted)', width: 150 }}>Descripción</th>
+                <th style={{ textAlign: 'center', padding: '10px 6px', color: 'var(--text-muted)', width: 90 }}>Tipo</th>
+                <th style={{ textAlign: 'center', padding: '10px 6px', color: 'var(--text-muted)', width: 60 }}>Req.</th>
+                <th style={{ textAlign: 'left', padding: '10px 6px', color: 'var(--text-muted)' }}>Valor / Columna ERP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleFields.map((def, i) => {
+                const { field, type, label, required, defaultErp, fixedValue } = def;
+                const badge = TYPE_BADGE[type] ?? TYPE_BADGE.text;
+                const rowBg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.02)';
 
-              // Vista read-only de sucursal seleccionada
-              if (selectedBranch !== null) {
-                const entityKey = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' }[activeTab];
-                const effectiveVal = branchMapeo?.[entityKey]?.[field];
-                const globalVal    = fieldMap[field];
-                const isOverride   = effectiveVal !== undefined && String(effectiveVal) !== String(globalVal ?? '');
+                // Vista read-only de sucursal seleccionada
+                if (selectedBranch !== null) {
+                  const entityKey = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' }[activeTab];
+                  const effectiveVal = branchMapeo?.[entityKey]?.[field];
+                  const globalVal    = fieldMap[field];
+                  const isOverride   = effectiveVal !== undefined && String(effectiveVal) !== String(globalVal ?? '');
+                  return (
+                    <tr key={field} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
+                      <td style={{ padding: '9px 10px' }}>
+                        <code style={{ background: 'var(--surface2)', padding: '2px 7px', borderRadius: 4, fontSize: 12 }}>{field}</code>
+                      </td>
+                      <td style={{ padding: '9px 6px', color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
+                      <td style={{ padding: '9px 6px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'var(--surface2)', color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                      </td>
+                      <td style={{ padding: '9px 6px', textAlign: 'center' }}>
+                        {required ? <span style={{ color: '#f87171', fontSize: 13, fontWeight: 700 }}>✓</span> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '9px 6px' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 13, color: isOverride ? '#fb923c' : '#d1d5db' }}>
+                          {effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : <span style={{ color: '#4b5563', fontStyle: 'italic' }}>sin mapear</span>}
+                        </span>
+                        {isOverride && (
+                          <span style={{ marginLeft: 8, fontSize: 10, background: '#431407', color: '#fb923c', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>override</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
+
+                let control;
+                if (type === 'fixed') {
+                  control = (
+                    <span style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+                      {String(fixedValue)} <span style={{ opacity: .5 }}>(sistema)</span>
+                    </span>
+                  );
+                } else if (type === 'skuPrefix') {
+                  control = (
+                    <span style={{ color: '#f472b6', fontSize: 12, fontStyle: 'italic' }}>
+                      🔑 Primeros <strong>5</strong> caracteres del código (automático)
+                    </span>
+                  );
+                } else if (type === 'fixedId') {
+                  const cur = fieldMap[field] !== undefined ? fieldMap[field] : '';
+                  const isFieldMapped = cur !== '';
+                  const inputStyle = {
+                    width: '100%',
+                    maxWidth: 300,
+                    borderRadius: 'var(--radius-sm)',
+                    transition: 'all 0.2s ease',
+                    ...( !dbConnected && isFieldMapped ? {
+                      borderColor: 'rgba(239, 68, 68, 0.6)',
+                      color: '#f87171',
+                      backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                      fontWeight: 500
+                    } : {} )
+                  };
+                  control = (
+                    <input type="text" value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
+                      placeholder="Valor estático o nombre de columna"
+                      disabled={!dbConnected}
+                      style={inputStyle} />
+                  );
+                } else {
+                  const cur = fieldMap[field] !== undefined ? fieldMap[field] : (defaultErp ?? '');
+                  const isFieldMapped = cur !== '';
+                  const selectStyle = {
+                    width: '100%',
+                    maxWidth: 300,
+                    borderRadius: 'var(--radius-sm)',
+                    transition: 'all 0.2s ease',
+                    ...( !dbConnected && isFieldMapped ? {
+                      borderColor: 'rgba(239, 68, 68, 0.6)',
+                      color: '#f87171',
+                      backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                      fontWeight: 500
+                    } : {} )
+                  };
+                  control = (
+                    <select value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
+                      disabled={!dbConnected}
+                      style={selectStyle}>
+                      <option value="">(sin mapear — vacío)</option>
+                      {!dbConnected && cur && !erpCols.includes(cur) && (
+                        <option value={cur}>{cur} (Guardado)</option>
+                      )}
+                      {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
+                    </select>
+                  );
+                }
+
                 return (
                   <tr key={field} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
                     <td style={{ padding: '9px 10px' }}>
-                      <code style={{ background: 'var(--surface2)', padding: '2px 7px', borderRadius: 4, fontSize: 12 }}>{field}</code>
+                      <code style={{ background: 'var(--surface2)', padding: '2px 7px', borderRadius: 4, fontSize: 12 }}>
+                        {field}
+                      </code>
                     </td>
                     <td style={{ padding: '9px 6px', color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
                     <td style={{ padding: '9px 6px', textAlign: 'center' }}>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'var(--surface2)', color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                      <span style={{
+                        fontSize: 10, padding: '2px 8px', borderRadius: 20,
+                        background: 'var(--surface2)', color: badge.color, fontWeight: 600,
+                      }}>{badge.label}</span>
                     </td>
                     <td style={{ padding: '9px 6px', textAlign: 'center' }}>
-                      {required ? <span style={{ color: '#f87171', fontSize: 13, fontWeight: 700 }}>✓</span> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                      {required
+                        ? <span style={{ color: '#f87171', fontSize: 13, fontWeight: 700 }}>✓</span>
+                        : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
                     </td>
-                    <td style={{ padding: '9px 6px' }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: 13, color: isOverride ? '#fb923c' : '#d1d5db' }}>
-                        {effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : <span style={{ color: '#4b5563', fontStyle: 'italic' }}>sin mapear</span>}
-                      </span>
-                      {isOverride && (
-                        <span style={{ marginLeft: 8, fontSize: 10, background: '#431407', color: '#fb923c', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>override</span>
-                      )}
-                    </td>
+                    <td style={{ padding: '9px 6px' }}>{control}</td>
                   </tr>
                 );
-              }
-
-              let control;
-              if (type === 'fixed') {
-                control = (
-                  <span style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic' }}>
-                    {String(fixedValue)} <span style={{ opacity: .5 }}>(sistema)</span>
-                  </span>
-                );
-              } else if (type === 'skuPrefix') {
-                control = (
-                  <span style={{ color: '#f472b6', fontSize: 12, fontStyle: 'italic' }}>
-                    🔑 Primeros <strong>5</strong> caracteres del código (automático)
-                  </span>
-                );
-              } else if (type === 'fixedId') {
-                const cur = fieldMap[field] !== undefined ? fieldMap[field] : '';
-                control = (
-                  <input type="text" value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
-                    placeholder="Valor estático o nombre de columna"
-                    style={{ width: '100%', maxWidth: 300, borderRadius: 'var(--radius-sm)' }} />
-                );
-              } else {
-                const cur = fieldMap[field] !== undefined ? fieldMap[field] : (defaultErp ?? '');
-                control = (
-                  <select value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
-                    style={{ width: '100%', maxWidth: 300, borderRadius: 'var(--radius-sm)' }}>
-                    <option value="">(sin mapear — vacío)</option>
-                    {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
-                  </select>
-                );
-              }
-
-              return (
-                <tr key={field} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
-                  <td style={{ padding: '9px 10px' }}>
-                    <code style={{ background: 'var(--surface2)', padding: '2px 7px', borderRadius: 4, fontSize: 12 }}>
-                      {field}
-                    </code>
-                  </td>
-                  <td style={{ padding: '9px 6px', color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
-                  <td style={{ padding: '9px 6px', textAlign: 'center' }}>
-                    <span style={{
-                      fontSize: 10, padding: '2px 8px', borderRadius: 20,
-                      background: 'var(--surface2)', color: badge.color, fontWeight: 600,
-                    }}>{badge.label}</span>
-                  </td>
-                  <td style={{ padding: '9px 6px', textAlign: 'center' }}>
-                    {required
-                      ? <span style={{ color: '#f87171', fontSize: 13, fontWeight: 700 }}>✓</span>
-                      : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
-                  </td>
-                  <td style={{ padding: '9px 6px' }}>{control}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Barra Lateral Derecha — solo maestro */}
+      {mode === 'master' && (
+        <aside className="sidebar-right">
+          <div className="sidebar-right__label">Mapeo y Referencia</div>
+          
+          {/* Botón rápido para Mapeo Global */}
+          <div 
+            onClick={() => setSelectedBranch(null)}
+            className={`sidebar-right__link${selectedBranch === null ? ' active' : ''}`}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Globe size={18} strokeWidth={1.75} /> 
+              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                <span>Mapeo Global</span>
+                {dbRef.host && (
+                  <span style={{ 
+                    fontSize: 10, 
+                    color: selectedBranch === null ? 'rgba(0, 212, 255, 0.7)' : 'var(--text-muted)', 
+                    fontWeight: 400 
+                  }}>
+                    Ref: {dbRef.host} ({dbRef.name})
+                  </span>
+                )}
+              </span>
+            </span>
+            {selectedBranch === null && <Star size={14} fill="currentColor" />}
+          </div>
+
+          <div className="sidebar-right__label" style={{ marginTop: 12 }}>Sucursales</div>
+
+          {branches.map(b => {
+            const isSelected = selectedBranch === b.branch_id;
+            return (
+              <div 
+                key={b.branch_id}
+                onClick={() => setSelectedBranch(b.branch_id)}
+                className={`sidebar-right__link${isSelected ? ' active-branch' : ''}`}
+                style={{ opacity: b.online ? 1 : 0.6 }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Building2 size={18} strokeWidth={1.75} />
+                  <span style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span>Sucursal {b.branch_id}</span>
+                    {b.hostname && (
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>
+                        {b.hostname}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isSelected && <Star size={14} fill="currentColor" />}
+                  <span style={{ 
+                    width: 7, 
+                    height: 7, 
+                    borderRadius: '50%', 
+                    background: b.online ? 'var(--green)' : 'var(--red)',
+                    boxShadow: b.online ? '0 0 6px var(--green)' : 'none',
+                    display: 'inline-block'
+                  }} title={b.online ? 'Online' : 'Offline'} />
+                </span>
+              </div>
+            );
+          })}
+
+          {branches.length === 0 && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: '16px 20px' }}>
+              No hay sucursales registradas.
+            </span>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

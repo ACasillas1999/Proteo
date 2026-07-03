@@ -39,9 +39,9 @@ function authenticateWebhook(req, res, next) {
 // GET /api/webhooks/logs — historial paginado
 router.get('/logs', async (req, res) => {
   try {
-    const page   = parseInt(req.query.page)  || 1;
-    const limit  = parseInt(req.query.limit) || 25;
-    const offset = (page - 1) * limit;
+    const page   = Math.max(1, parseInt(req.query.page) || 1);
+    const limitVal  = Math.max(1, parseInt(req.query.limit) || 25);
+    const offsetVal = (page - 1) * limitVal;
 
     let sqlWhere  = '1=1';
     const params      = [];
@@ -58,7 +58,7 @@ router.get('/logs', async (req, res) => {
       countParams.push(parseInt(req.query.estado));
     }
 
-    const [rows]      = await localQuery(`SELECT * FROM webhook_logs WHERE ${sqlWhere} ORDER BY fecha_recepcion DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    const [rows]      = await localQuery(`SELECT * FROM webhook_logs WHERE ${sqlWhere} ORDER BY fecha_recepcion DESC LIMIT ${limitVal} OFFSET ${offsetVal}`, params);
     const [countRows] = await localQuery(`SELECT COUNT(*) as total FROM webhook_logs WHERE ${sqlWhere}`, countParams);
 
     res.json({ ok: true, data: rows, total: countRows[0].total });
@@ -73,13 +73,13 @@ router.get('/pending', authenticateWebhook, async (req, res) => {
   try {
     const branchId = parseInt(req.query.branch_id);
     const afterId  = parseInt(req.query.after_id) || 0;
-    const limit    = Math.min(parseInt(req.query.limit) || 100, 500);
+    const limitVal = Math.max(1, Math.min(parseInt(req.query.limit) || 100, 500));
 
     if (!branchId) return res.status(400).json({ error: 'branch_id required' });
 
     const [rows] = await localQuery(
-      `SELECT * FROM webhook_logs WHERE branch_id = ? AND id > ? ORDER BY id ASC LIMIT ?`,
-      [branchId, afterId, limit]
+      `SELECT * FROM webhook_logs WHERE branch_id = ? AND id > ? ORDER BY id ASC LIMIT ${limitVal}`,
+      [branchId, afterId]
     );
     res.json({ ok: true, data: rows, count: rows.length });
   } catch (err) {

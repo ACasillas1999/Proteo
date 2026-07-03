@@ -60,12 +60,22 @@ router.get('/fields', async (_req, res) => {
   const { query }     = require('../src/db');
 
   let erpColumns = [];
+  let dbConnected = true;
   try {
     const [rows] = await query('SHOW COLUMNS FROM articulo');
     erpColumns = rows.map(r => r.Field);
-  } catch { /* DB no disponible */ }
+  } catch {
+    dbConnected = false; /* DB no disponible */
+  }
 
-  res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
+  res.json({ 
+    ok: true, 
+    psFields: PS_FIELDS, 
+    erpColumns, 
+    dbConnected,
+    dbHost: process.env.MYSQL_HOST || 'localhost',
+    dbName: process.env.MYSQL_DB || ''
+  });
 });
 
 // GET /api/mapeo/fields/articuloalm — devuelve campos PS y columnas ERP disponibles para inventario
@@ -74,12 +84,15 @@ router.get('/fields/articuloalm', async (_req, res) => {
   const { query }     = require('../src/db');
 
   let erpColumns = [];
+  let dbConnected = true;
   try {
     const [rows] = await query('SHOW COLUMNS FROM articuloalm');
     erpColumns = rows.map(r => r.Field);
-  } catch { /* DB no disponible */ }
+  } catch {
+    dbConnected = false; /* DB no disponible */
+  }
 
-  res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
+  res.json({ ok: true, psFields: PS_FIELDS, erpColumns, dbConnected });
 });
 
 // GET /api/mapeo/fields/cliente — devuelve campos PS y columnas ERP disponibles para clientes
@@ -88,15 +101,18 @@ router.get('/fields/cliente', async (_req, res) => {
   const { query }     = require('../src/db');
 
   let erpColumns = [];
+  let dbConnected = true;
   try {
     const [rows] = await query('SHOW COLUMNS FROM clientes');
     erpColumns = rows.map(r => r.Field);
     if (!erpColumns.includes('e_mail')) {
       erpColumns.push('e_mail');
     }
-  } catch { /* DB no disponible o tabla no existe aún */ }
+  } catch {
+    dbConnected = false; /* DB no disponible o tabla no existe aún */
+  }
 
-  res.json({ ok: true, psFields: PS_FIELDS, erpColumns });
+  res.json({ ok: true, psFields: PS_FIELDS, erpColumns, dbConnected });
 });
 
 // GET /api/mapeo/branch/:branchId — sucursales jalan su mapeo merged (global + overrides)

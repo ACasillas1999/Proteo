@@ -38,12 +38,22 @@ export default function BranchDashboard({ wsEvents = [] }) {
 
   const load = useCallback(() => {
     Promise.all([
-      axios.get('/api/webhooks/logs?limit=20'),
-      axios.get('/api/status'),
-    ]).then(([l, s]) => {
-      setLogs(l.data.data ?? []);
-      setStatus(s.data);
-    }).catch(() => {});
+      axios.get('/api/webhooks/logs?limit=20')
+        .then(r => r.data.data ?? [])
+        .catch(err => {
+          console.error('Error cargando logs de webhooks:', err);
+          return [];
+        }),
+      axios.get('/api/status')
+        .then(r => r.data)
+        .catch(err => {
+          console.error('Error cargando status:', err);
+          return null;
+        }),
+    ]).then(([logsData, statusData]) => {
+      setLogs(logsData);
+      setStatus(statusData);
+    });
 
     // Leer last_poll_at desde config
     axios.get('/api/config').then(r => setConfig(r.data.data ?? {})).catch(() => {});
