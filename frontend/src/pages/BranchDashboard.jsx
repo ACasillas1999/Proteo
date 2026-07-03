@@ -30,15 +30,26 @@ function StatusDot({ ok, label, sub }) {
   );
 }
 
+function formatSyncDate(d) {
+  if (!d) return '—';
+  try {
+    const s = String(d).includes(' ') ? String(d).replace(' ', 'T') + 'Z' : String(d);
+    return new Date(s).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
+}
+
 export default function BranchDashboard({ wsEvents = [] }) {
   const { branchId } = useMode();
   const [logs,      setLogs]      = useState([]);
   const [config,    setConfig]    = useState({});
   const [status,    setStatus]    = useState(null);
+  const [syncs,     setSyncs]     = useState([]);
 
   const load = useCallback(() => {
     Promise.all([
-      axios.get('/api/webhooks/logs?limit=20')
+      axios.get('/api/webhooks/logs?limit=10')
         .then(r => r.data.data ?? [])
         .catch(err => {
           console.error('Error cargando logs de webhooks:', err);
@@ -50,9 +61,16 @@ export default function BranchDashboard({ wsEvents = [] }) {
           console.error('Error cargando status:', err);
           return null;
         }),
-    ]).then(([logsData, statusData]) => {
+      axios.get('/api/cambios?limit=10')
+        .then(r => r.data.data ?? [])
+        .catch(err => {
+          console.error('Error cargando cambios de auditoría:', err);
+          return [];
+        }),
+    ]).then(([logsData, statusData, cambiosData]) => {
       setLogs(logsData);
       setStatus(statusData);
+      setSyncs(cambiosData);
     });
 
     // Leer last_poll_at desde config
@@ -67,7 +85,14 @@ export default function BranchDashboard({ wsEvents = [] }) {
 
   useEffect(() => {
     const last = wsEvents[0];
-    if (last?.type === 'webhook_processed' || last?.type === 'webhook_poll') load();
+    if (
+      last?.type === 'webhook_processed' ||
+      last?.type === 'webhook_poll' ||
+      last?.event === 'sync_ok' ||
+      last?.event === 'sync_error'
+    ) {
+      load();
+    }
   }, [wsEvents, load]);
 
   const counts    = status?.counts  || {};
@@ -121,47 +146,86 @@ export default function BranchDashboard({ wsEvents = [] }) {
         ))}
       </div>
 
-      {/* Últimos webhooks procesados localmente */}
-      <div className="card">
-        <div className="section-title" style={{ marginBottom: 12 }}>Últimos webhooks procesados</div>
-        {logs.length === 0 ? (
-          <p style={{ color: '#6b7280', fontSize: 13 }}>Sin registros locales aún.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
-                <th style={{ padding: '6px 10px' }}>Entidad</th>
-                <th style={{ padding: '6px 10px' }}>Clave</th>
-                <th style={{ padding: '6px 10px' }}>Estado</th>
-                <th style={{ padding: '6px 10px' }}>Error</th>
-                <th style={{ padding: '6px 10px' }}>Recibido</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map(l => (
-                <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }}>
-                  <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{l.entidad}</td>
-                  <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{l.clave_registro}</td>
-                  <td style={{ padding: '7px 10px' }}>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                      background: l.estado === 1 ? '#064e3b' : '#450a0a',
-                      color:      l.estado === 1 ? '#34d399' : '#f87171',
-                    }}>
-                      {l.estado === 1 ? 'OK' : 'Error'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '7px 10px', color: '#f87171', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {l.error_msg || '—'}
-                  </td>
-                  <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: 11 }}>
-                    {l.fecha_recepcion ? new Date(l.fecha_recepcion).toLocaleString('es-MX') : '—'}
-                  </td>
+      {/* Tablas de Actividad */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: 16 }}>
+        {/* Últimos envíos ERP -> PowerSales */}
+        <div className="card">
+          <div className="section-title" style={{ marginBottom: 12 }}>Últimos envíos del ERP (Subida)</div>
+          {syncs.length === 0 ? (
+            <p style={{ color: '#6b7280', fontSize: 13 }}>Sin envíos registrados aún.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
+                  <th style={{ padding: '6px 10px' }}>Entidad</th>
+                  <th style={{ padding: '6px 10px' }}>Clave</th>
+                  <th style={{ padding: '6px 10px' }}>Estado</th>
+                  <th style={{ padding: '6px 10px' }}>Fecha sync</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {syncs.map(s => {
+                  const estadoLabel = s.sincronizado === 1 ? 'OK' : s.sincronizado === 2 ? 'Error' : 'Pendiente';
+                  const bg = s.sincronizado === 1 ? '#064e3b' : s.sincronizado === 2 ? '#450a0a' : '#431407';
+                  const fg = s.sincronizado === 1 ? '#34d399' : s.sincronizado === 2 ? '#f87171' : '#fb923c';
+                  return (
+                    <tr key={s.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                      <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{s.tabla}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{s.clave_registro}</td>
+                      <td style={{ padding: '7px 10px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bg, color: fg }}>
+                          {estadoLabel}
+                        </span>
+                      </td>
+                      <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: 11 }}>
+                        {formatSyncDate(s.fecha_sync || s.fecha_cambio)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Últimos webhooks procesados PowerSales -> ERP */}
+        <div className="card">
+          <div className="section-title" style={{ marginBottom: 12 }}>Últimos webhooks procesados (Bajada)</div>
+          {logs.length === 0 ? (
+            <p style={{ color: '#6b7280', fontSize: 13 }}>Sin registros locales aún.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
+                  <th style={{ padding: '6px 10px' }}>Entidad</th>
+                  <th style={{ padding: '6px 10px' }}>Clave</th>
+                  <th style={{ padding: '6px 10px' }}>Estado</th>
+                  <th style={{ padding: '6px 10px' }}>Recibido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map(l => (
+                  <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                    <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{l.entidad}</td>
+                    <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{l.clave_registro}</td>
+                    <td style={{ padding: '7px 10px' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                        background: l.estado === 1 ? '#064e3b' : '#450a0a',
+                        color:      l.estado === 1 ? '#34d399' : '#f87171',
+                      }}>
+                        {l.estado === 1 ? 'OK' : 'Error'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: 11 }}>
+                      {formatSyncDate(l.fecha_recepcion)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

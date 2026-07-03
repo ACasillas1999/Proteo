@@ -11,14 +11,35 @@ function timeSince(dateStr) {
   return `hace ${Math.floor(secs / 3600)}h`;
 }
 
+function StatusDot({ ok, label, sub }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 18px', background: '#111827', borderRadius: 10,
+      border: `1px solid ${ok ? '#065f46' : '#7f1d1d'}`,
+      flex: 1,
+    }}>
+      <div style={{
+        width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+        background: ok ? '#34d399' : '#f87171',
+        boxShadow: ok ? '0 0 8px #34d399' : '0 0 8px #f87171',
+      }} />
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: ok ? '#34d399' : '#f87171' }}>{label}</div>
+        {sub && <div style={{ fontSize: 10, color: '#6b7280', marginTop: 1 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function MasterDashboard({ wsEvents = [] }) {
   const [digest,  setDigest]  = useState([]);
-  const [totals,  setTotals]  = useState({});
+  const [status,  setStatus]  = useState(null);
   const [feed,    setFeed]    = useState([]);
 
   const loadDigest = useCallback(() => {
     axios.get('/api/branches/digest').then(r => setDigest(r.data.data ?? [])).catch(() => {});
-    axios.get('/api/status').then(r => setTotals(r.data.counts ?? {})).catch(() => {});
+    axios.get('/api/status').then(r => setStatus(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -55,10 +76,33 @@ export default function MasterDashboard({ wsEvents = [] }) {
   const onlineCount  = digest.filter(b => b.online).length;
   const offlineCount = digest.filter(b => !b.online).length;
   const totalPending = digest.reduce((s, b) => s + (b.pending_count ?? 0), 0);
+  const totals       = status?.counts || {};
+  const dbConnected  = status?.db === 'connected';
+  const binlogConnected = status?.worker?.binlog === 'connected';
+  const lastWebhook  = status?.worker?.lastWebhookAt;
 
   return (
     <div>
       <h1 className="section-title" style={{ marginBottom: 20 }}>⚡ Maestro — Vista Global</h1>
+
+      {/* Semáforos de estado local */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, maxWidth: 900 }}>
+        <StatusDot
+          ok={dbConnected}
+          label={dbConnected ? 'ERP Conectado' : 'ERP Desconectado'}
+          sub={dbConnected ? 'Conexión a base de datos central OK' : 'Error de conexión a base de datos'}
+        />
+        <StatusDot
+          ok={binlogConnected}
+          label={binlogConnected ? 'Binlog CDC Conectado' : 'Binlog CDC Inactivo'}
+          sub={binlogConnected ? 'Captura en tiempo real activa' : 'Sincronizador poller fallback'}
+        />
+        <StatusDot
+          ok={true}
+          label="Leyendo Webhooks"
+          sub={lastWebhook ? `Último: ${timeSince(lastWebhook)}` : 'Esperando primer webhook'}
+        />
+      </div>
 
       {/* KPIs */}
       <div className="kpi-grid">

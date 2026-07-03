@@ -5,6 +5,7 @@ const { getStats }                   = require('../src/processor');
 const { getConnectedCount }          = require('../src/websocket');
 const config                         = require('../src/config');
 const { query }                      = require('../src/db');
+const { localQuery }                 = require('../src/localdb');
 
 router.get('/', async (_req, res) => {
   const binlog = getBinlogStatus();
@@ -36,6 +37,16 @@ router.get('/', async (_req, res) => {
     console.error('[STATUS] DB error:', dbErr.message);
   }
 
+  let lastWebhookAt = null;
+  try {
+    const [webhookRows] = await localQuery('SELECT fecha_recepcion FROM webhook_logs ORDER BY id DESC LIMIT 1');
+    if (webhookRows.length > 0) {
+      lastWebhookAt = webhookRows[0].fecha_recepcion;
+    }
+  } catch (err) {
+    console.error('[STATUS] Error fetching last webhook:', err.message);
+  }
+
   // Siempre devuelve 200 (el frontend detecta db:'error' y lo muestra)
   res.json({
     ok:  true,
@@ -46,6 +57,7 @@ router.get('/', async (_req, res) => {
       startedAt: binlog.startedAt,
       lastEvent: binlog.lastEventAt,
       wsClients: getConnectedCount(),
+      lastWebhookAt,
     },
     counts,
     runtime: stats,
