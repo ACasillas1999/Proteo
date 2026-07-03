@@ -109,8 +109,8 @@ export default function BranchDashboard({ wsEvents = [] }) {
       {/* Stats rápidos */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {[
-          { label: 'OK hoy',         val: todayLogs,       color: '#34d399' },
-          { label: 'Errores hoy',    val: errorLogs,       color: '#f87171' },
+          { label: 'OK hoy',         val: counts.hoy,       color: '#34d399' },
+          { label: 'Errores hoy',    val: counts.error,     color: '#f87171' },
           { label: 'Sync OK total',  val: counts.ok,       color: '#38bdf8' },
           { label: 'En cola',        val: counts.pendiente,color: '#fb923c' },
         ].map(k => (

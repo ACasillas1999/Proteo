@@ -39,9 +39,10 @@ async function query(sql, params = []) {
 
 /** Marca un cambio como sincronizado correctamente (sincronizado=1) */
 async function markSynced(id) {
+  const server = process.env.PS_BRANCH_ID ? `Sucursal ${process.env.PS_BRANCH_ID}` : 'Maestro';
   await query(
-    'UPDATE Cambios SET sincronizado=1, fecha_sync=NOW(), error_sync=NULL WHERE id=?',
-    [id]
+    'UPDATE Cambios SET sincronizado=1, fecha_sync=NOW(), error_sync=NULL, procesado_por=? WHERE id=?',
+    [server, id]
   );
 }
 
@@ -50,9 +51,10 @@ async function markSynced(id) {
  * NOTA: el schema original usa TINYINT(1) para 0/1, ampliamos a 2=error.
  */
 async function markError(id, errorMsg) {
+  const server = process.env.PS_BRANCH_ID ? `Sucursal ${process.env.PS_BRANCH_ID}` : 'Maestro';
   await query(
-    'UPDATE Cambios SET sincronizado=2, error_sync=?, fecha_sync=NOW() WHERE id=?',
-    [String(errorMsg).substring(0, 1000), id]
+    'UPDATE Cambios SET sincronizado=2, error_sync=?, fecha_sync=NOW(), procesado_por=? WHERE id=?',
+    [String(errorMsg).substring(0, 1000), server, id]
   );
 }
 

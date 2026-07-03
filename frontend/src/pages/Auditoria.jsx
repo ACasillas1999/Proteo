@@ -106,7 +106,7 @@ export default function Auditoria() {
           {loading ? (
             <p className="text-muted" style={{ padding: 20 }}>Cargando…</p>
           ) : (
-            <table>
+             <table>
               <thead>
                 <tr>
                   <th>ID</th>
@@ -114,6 +114,7 @@ export default function Auditoria() {
                   <th>Clave</th>
                   <th>Campos</th>
                   <th>Fecha cambio</th>
+                  <th>Servidor</th>
                   <th>Estado</th>
                   <th>Fecha sync</th>
                   <th></th>
@@ -136,6 +137,11 @@ export default function Auditoria() {
                         {r.campos_modificados}
                       </td>
                       <td style={{ color: 'var(--text-muted)' }}>{fmtDate(r.fecha_cambio)}</td>
+                      <td>
+                        <span style={{ fontSize: 12, color: r.procesado_por ? '#38bdf8' : 'var(--text-muted)' }}>
+                          {r.procesado_por || '—'}
+                        </span>
+                      </td>
                       <td><span className={`badge ${est.cls}`}>{est.label}</span></td>
                       <td style={{ color: 'var(--text-muted)' }}>{fmtDate(r.fecha_sync)}</td>
                       <td>
@@ -149,7 +155,7 @@ export default function Auditoria() {
                   );
                 })}
                 {rows.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>Sin resultados</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>Sin resultados</td></tr>
                 )}
               </tbody>
             </table>
@@ -172,6 +178,7 @@ export default function Auditoria() {
             <ModalField label="Clave Registro"><p>{modal.clave_registro}</p></ModalField>
             <ModalField label="Campos modificados"><p>{modal.campos_modificados}</p></ModalField>
             <ModalField label="Fecha cambio"><p>{fmtDate(modal.fecha_cambio)}</p></ModalField>
+            <ModalField label="Servidor"><p>{modal.procesado_por || '—'}</p></ModalField>
             <ModalField label="Error">
               <pre>{modal.error_sync || 'Sin detalle'}</pre>
             </ModalField>
