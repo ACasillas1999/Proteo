@@ -144,7 +144,7 @@ async function processChange(cambioId) {
       if (isOfflineError(err)) {
         _lastTimeoutAt = Date.now();
         console.warn(`[PROC] ✗ #${cambioId} falló por desconexión de red: ${lastError}. Abortando reintentos para activar cooldown.`);
-        broadcast('worker_status', { isOffline: true });
+        broadcast('worker_status', { isOffline: true, cooldownEndAt: _lastTimeoutAt + OFFLINE_COOLDOWN_MS });
         throw new OfflineError(lastError);
       }
       if (attempt < cfg.max_retries) {
@@ -236,4 +236,14 @@ function isOffline() {
   return Date.now() - _lastTimeoutAt < OFFLINE_COOLDOWN_MS;
 }
 
-module.exports = { processChange, getStats, startPoller, stopPoller, isOffline };
+function getCooldownEndAt() {
+  return _lastTimeoutAt > 0 ? _lastTimeoutAt + OFFLINE_COOLDOWN_MS : null;
+}
+
+function resetCooldown() {
+  _lastTimeoutAt = 0;
+  broadcast('worker_status', { isOffline: false, cooldownEndAt: null });
+  pollPendingChanges().catch(e => console.error('[PROC] Error en forzado:', e.message));
+}
+
+module.exports = { processChange, getStats, startPoller, stopPoller, isOffline, getCooldownEndAt, resetCooldown };

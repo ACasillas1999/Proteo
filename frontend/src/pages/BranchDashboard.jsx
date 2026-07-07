@@ -10,22 +10,24 @@ function timeSince(dateStr) {
   return `${Math.floor(secs / 3600)}h`;
 }
 
-function StatusDot({ ok, label, sub }) {
+function StatusDot({ ok, label, sub, children }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '16px 20px', background: '#111827', borderRadius: 10,
       border: `1px solid ${ok ? '#065f46' : '#7f1d1d'}`,
+      width: '100%'
     }}>
       <div style={{
         width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
         background: ok ? '#34d399' : '#f87171',
         boxShadow: ok ? '0 0 8px #34d399' : '0 0 8px #f87171',
       }} />
-      <div>
+      <div style={{ flexGrow: 1 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: ok ? '#34d399' : '#f87171' }}>{label}</div>
         {sub && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{sub}</div>}
       </div>
+      {children}
     </div>
   );
 }
@@ -48,6 +50,8 @@ export default function BranchDashboard({ wsEvents = [] }) {
   const [syncs,     setSyncs]     = useState([]);
   const [latency,   setLatency]   = useState(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [cooldownEndAt, setCooldownEndAt] = useState(null);
+  const [timeLeft,      setTimeLeft]      = useState(0);
 
   const load = useCallback(() => {
     Promise.all([
@@ -78,6 +82,7 @@ export default function BranchDashboard({ wsEvents = [] }) {
           setLatency(statusData.worker.lastLatency);
         }
         setIsOffline(!!statusData.worker?.isOffline);
+        setCooldownEndAt(statusData.worker?.cooldownEndAt ? new Date(statusData.worker.cooldownEndAt).getTime() : null);
       }
     });
 
@@ -97,10 +102,12 @@ export default function BranchDashboard({ wsEvents = [] }) {
       if (last.event === 'sync_ok' && last.data?.ms !== undefined) {
         setLatency(last.data.ms);
         setIsOffline(false);
+        setCooldownEndAt(null);
       } else if (last.event === 'sync_error' && last.data?.ms !== undefined) {
         setLatency(last.data.ms);
       } else if (last.event === 'worker_status' && last.data?.isOffline !== undefined) {
         setIsOffline(last.data.isOffline);
+        setCooldownEndAt(last.data.cooldownEndAt ? new Date(last.data.cooldownEndAt).getTime() : null);
       }
     }
     if (
@@ -112,6 +119,20 @@ export default function BranchDashboard({ wsEvents = [] }) {
       load();
     }
   }, [wsEvents, load]);
+
+  useEffect(() => {
+    if (!cooldownEndAt) {
+      setTimeLeft(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, cooldownEndAt - Date.now());
+      setTimeLeft(remaining);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownEndAt]);
 
   const counts    = status?.counts  || {};
   const lastPoll  = config.last_poll_at;
@@ -140,8 +161,42 @@ export default function BranchDashboard({ wsEvents = [] }) {
         <StatusDot
           ok={!isOffline}
           label={isOffline ? 'PowerSales Caído' : 'Conexión a PowerSales'}
-          sub={isOffline ? 'Cooldown activo (pausa de 2m)' : 'Online / Sincronizando'}
-        />
+          sub={isOffline ? `Pausa: reintento en ${Math.ceil(timeLeft / 1000)}s` : 'Online / Sincronizando'}
+        >
+          {isOffline && (
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await axios.post('/api/status/clear-cooldown');
+                } catch (err) {
+                  console.error('Error forzando reanudación:', err);
+                }
+              }}
+              style={{
+                background: '#451a03',
+                color: '#fb923c',
+                border: '1px solid #7c2d12',
+                borderRadius: 6,
+                padding: '4px 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#7c2d12';
+                e.target.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#451a03';
+                e.target.style.color = '#fb923c';
+              }}
+            >
+              Forzar ya ⚡
+            </button>
+          )}
+        </StatusDot>
         <StatusDot
           ok={!!pollerOk}
           label={pollerOk ? 'Poller activo' : 'Poller inactivo'}

@@ -1,7 +1,7 @@
 'use strict';
 const router = require('express').Router();
 const { getStatus: getBinlogStatus } = require('../src/binlog');
-const { getStats, isOffline }        = require('../src/processor');
+const { getStats, isOffline, getCooldownEndAt, resetCooldown } = require('../src/processor');
 const { getConnectedCount }          = require('../src/websocket');
 const config                         = require('../src/config');
 const { query }                      = require('../src/db');
@@ -70,6 +70,7 @@ router.get('/', async (_req, res) => {
       lastWebhookAt,
       lastLatency,
       isOffline: isOffline(),
+      cooldownEndAt: getCooldownEndAt(),
     },
     counts,
     runtime: stats,
@@ -164,6 +165,15 @@ Object.entries(PS_CATALOG_ENDPOINTS).forEach(([alias, psPath]) => {
       res.json({ error: err.response?.data || err.message, status: err.response?.status });
     }
   });
+});
+
+router.post('/clear-cooldown', (req, res) => {
+  try {
+    resetCooldown();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
