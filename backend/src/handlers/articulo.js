@@ -40,7 +40,7 @@ const PS_FIELDS = [
   { field: 'BarCode3',        type: 'text',       required: false, label: 'Código de barras 3',     defaultErp: null },
   { field: 'Cost',            type: 'numStr',     required: true,  label: 'Costo',                  defaultErp: 'Costo_Ult_Compra' },
   { field: 'IsActive',        type: 'boolean',    required: false, label: 'Activo',                 defaultErp: 'Habilitado' },
-  { field: 'UnitsPerBox',     type: 'number',     required: false, label: 'Unidades por caja',      defaultErp: null },
+  { field: 'UnitsPerBox',     type: 'number',     required: false, label: 'Unidades por caja',      defaultErp: null, fallbackValue: 1 },
   { field: 'CasePerPallet',   type: 'number',     required: false, label: 'Cajas por palet',        defaultErp: null },
   { field: 'ConversionFactor',type: 'number',     required: false, label: 'Factor de conversión',  defaultErp: 'Conversion' },
   { field: 'ClaveSat',        type: 'text',       required: false, label: 'Clave SAT',             defaultErp: 'IDSAT' },
@@ -54,7 +54,7 @@ const PS_FIELDS = [
   { field: 'CategoryId',    type: 'erpColumn',  required: true,  label: 'ID Categoría (CategoryNumber)', defaultErp: 'Clasificacion', fallbackValue: '9999' },
   { field: 'SubCategoryId', type: 'erpColumn',  required: true,  label: 'ID Sub-categoría',            defaultErp: null },
   // Mapeables o null si sin mapear
-  { field: 'ProductType',   type: 'text',       required: false, label: 'Tipo de producto',            defaultErp: null },
+  { field: 'ProductType',   type: 'text',       required: false, label: 'Tipo de producto',            defaultErp: null, fallbackValue: 'P' },
   { field: 'IsPMRequired',  type: 'boolean',    required: false, label: 'PM requerido',                defaultErp: null },
   { field: 'IsDecimal',     type: 'boolean',    required: false, label: 'Es decimal',                  defaultErp: null },
   // Listas de precios (no van a /products, sino a /pricelistsdetails)
@@ -99,7 +99,7 @@ async function mapArticulo(row) {
       const isFallback = rawVal === null || rawVal === '0';
       payload[field] = isFallback ? (def.fallbackValue ?? null) : rawVal;
     } else if (type === 'fixedId') {
-      const val = fieldMap[field];
+      const val = fieldMap[field] ?? defaultFixed;
       if (val !== undefined && val !== null) {
         const asInt = parseInt(val);
         if (!isNaN(asInt)) {
@@ -141,7 +141,15 @@ async function mapArticulo(row) {
       // text | number | boolean | numStr → leer columna ERP
       const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
       if (!erpCol) {
-        payload[field] = null;  // sin mapear → null
+        if (type === 'boolean') {
+          payload[field] = def.fallbackValue !== undefined ? def.fallbackValue : 0;
+        } else if (type === 'number') {
+          payload[field] = def.fallbackValue !== undefined ? def.fallbackValue : 0;
+        } else if (type === 'numStr') {
+          payload[field] = def.fallbackValue !== undefined ? String(def.fallbackValue) : '0';
+        } else {
+          payload[field] = def.fallbackValue !== undefined ? def.fallbackValue : null;
+        }
         continue;
       }
       const raw = row[erpCol] ?? '';
@@ -151,6 +159,9 @@ async function mapArticulo(row) {
       else                          payload[field] = String(raw);
     }
   }
+
+  // Sobrescribir CategoryId específico según la clasificación lógica original
+  payload['CategoryId'] = categoryId;
 
   return { payload, priceListsMapped };
 }
