@@ -47,6 +47,7 @@ export default function BranchDashboard({ wsEvents = [] }) {
   const [status,    setStatus]    = useState(null);
   const [syncs,     setSyncs]     = useState([]);
   const [latency,   setLatency]   = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
 
   const load = useCallback(() => {
     Promise.all([
@@ -72,8 +73,11 @@ export default function BranchDashboard({ wsEvents = [] }) {
       setLogs(logsData);
       setStatus(statusData);
       setSyncs(cambiosData);
-      if (statusData && statusData.worker?.lastLatency != null) {
-        setLatency(statusData.worker.lastLatency);
+      if (statusData) {
+        if (statusData.worker?.lastLatency != null) {
+          setLatency(statusData.worker.lastLatency);
+        }
+        setIsOffline(!!statusData.worker?.isOffline);
       }
     });
 
@@ -92,8 +96,11 @@ export default function BranchDashboard({ wsEvents = [] }) {
     if (last) {
       if (last.event === 'sync_ok' && last.data?.ms !== undefined) {
         setLatency(last.data.ms);
+        setIsOffline(false);
       } else if (last.event === 'sync_error' && last.data?.ms !== undefined) {
         setLatency(last.data.ms);
+      } else if (last.event === 'worker_status' && last.data?.isOffline !== undefined) {
+        setIsOffline(last.data.isOffline);
       }
     }
     if (
@@ -129,6 +136,11 @@ export default function BranchDashboard({ wsEvents = [] }) {
           ok={true}
           label="Proteo corriendo"
           sub="Servidor activo"
+        />
+        <StatusDot
+          ok={!isOffline}
+          label={isOffline ? 'PowerSales Caído' : 'Conexión a PowerSales'}
+          sub={isOffline ? 'Cooldown activo (pausa de 2m)' : 'Online / Sincronizando'}
         />
         <StatusDot
           ok={!!pollerOk}

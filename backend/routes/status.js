@@ -1,7 +1,7 @@
 'use strict';
 const router = require('express').Router();
 const { getStatus: getBinlogStatus } = require('../src/binlog');
-const { getStats }                   = require('../src/processor');
+const { getStats, isOffline }        = require('../src/processor');
 const { getConnectedCount }          = require('../src/websocket');
 const config                         = require('../src/config');
 const { query }                      = require('../src/db');
@@ -69,6 +69,7 @@ router.get('/', async (_req, res) => {
       wsClients: getConnectedCount(),
       lastWebhookAt,
       lastLatency,
+      isOffline: isOffline(),
     },
     counts,
     runtime: stats,

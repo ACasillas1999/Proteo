@@ -136,6 +136,7 @@ async function processChange(cambioId) {
 
       console.log(`[PROC] ✓ #${cambioId} (${tabla}/${clave_registro}) en ${ms}ms`);
       broadcast('sync_ok', { id: cambioId, tabla, clave: clave_registro, ms });
+      broadcast('worker_status', { isOffline: false });
       return;
 
     } catch (err) {
@@ -143,6 +144,7 @@ async function processChange(cambioId) {
       if (isOfflineError(err)) {
         _lastTimeoutAt = Date.now();
         console.warn(`[PROC] ✗ #${cambioId} falló por desconexión de red: ${lastError}. Abortando reintentos para activar cooldown.`);
+        broadcast('worker_status', { isOffline: true });
         throw new OfflineError(lastError);
       }
       if (attempt < cfg.max_retries) {
@@ -230,4 +232,8 @@ function stopPoller() {
   }
 }
 
-module.exports = { processChange, getStats, startPoller, stopPoller };
+function isOffline() {
+  return Date.now() - _lastTimeoutAt < OFFLINE_COOLDOWN_MS;
+}
+
+module.exports = { processChange, getStats, startPoller, stopPoller, isOffline };
