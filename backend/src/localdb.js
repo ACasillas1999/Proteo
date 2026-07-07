@@ -66,6 +66,7 @@ async function migrate() {
         intentos        INT          NOT NULL DEFAULT 1,
         fecha_cambio    DATETIME     DEFAULT NULL,
         fecha_sync      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        latency_ms      INT          DEFAULT NULL,
         INDEX idx_entidad   (entidad),
         INDEX idx_estado    (estado),
         INDEX idx_clave     (clave_registro),
@@ -100,6 +101,7 @@ async function migrate() {
     // Migration guards for instances created before multi-branch support
     try { await conn.query(`ALTER TABLE webhook_logs ADD COLUMN branch_id INT DEFAULT NULL`); } catch {}
     try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_branch (branch_id)`); } catch {}
+    try { await conn.query(`ALTER TABLE sync_history ADD COLUMN latency_ms INT DEFAULT NULL`); } catch {}
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS branch_status (
@@ -197,15 +199,15 @@ async function saveFieldMapping(entity, mappings) {
 /**
  * Guarda el resultado de un intento de sincronización en el historial local.
  */
-async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, payload = null) {
+async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, payload = null, latencyMs = null) {
   const datosJson = payload
     ? JSON.stringify(payload)
     : (cambio.datos ? JSON.stringify(cambio.datos) : null);
 
   await localQuery(
     `INSERT INTO sync_history
-       (cambio_id, entidad, operacion, clave_registro, datos, estado, error_msg, intentos, fecha_cambio)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (cambio_id, entidad, operacion, clave_registro, datos, estado, error_msg, intentos, fecha_cambio, latency_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       cambio.id,
       cambio.entidad       || cambio.tabla || 'desconocido',
@@ -216,6 +218,7 @@ async function saveSyncHistory(cambio, estado, errorMsg = null, intentos = 1, pa
       errorMsg ? String(errorMsg).substring(0, 2000) : null,
       intentos,
       cambio.fecha_cambio  || cambio.fecha || null,
+      latencyMs,
     ]
   );
 }

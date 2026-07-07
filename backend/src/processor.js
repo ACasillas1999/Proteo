@@ -96,8 +96,8 @@ async function processChange(cambioId) {
 
       const ms = Date.now() - t0;
 
-      // 3. Guardar OK en historial local (con payload enviado)
-      await saveSyncHistory(cambio, 1, null, attempt, payload).catch(e =>
+      // 3. Guardar OK en historial local (con payload enviado y latencia)
+      await saveSyncHistory(cambio, 1, null, attempt, payload, ms).catch(e =>
         console.error('[PROC] Error guardando historial local:', e.message)
       );
 
@@ -126,8 +126,9 @@ async function processChange(cambioId) {
 
   // Agotados los reintentos — guardar error en historial y borrar de remoto
   _state.errors++;
+  const msFailed = Date.now() - t0;
 
-  await saveSyncHistory(cambio, 2, lastError, attempt - 1).catch(e =>
+  await saveSyncHistory(cambio, 2, lastError, attempt - 1, null, msFailed).catch(e =>
     console.error('[PROC] Error guardando historial de error:', e.message)
   );
 

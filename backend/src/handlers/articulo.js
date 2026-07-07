@@ -4,6 +4,9 @@ const ps                 = require('../powersales');
 const { getFieldMapping, getConfig } = require('../localdb');
 const catalog            = require('../catalogCache');
 
+// Caché en memoria para evitar registrar las mismas listas de precios repetidamente
+const registeredPriceLists = new Set();
+
 /**
  * Lee el mapeo desde proteo_db (field_mapping + app_config).
  * Fallback: valores por defecto si la BD no tiene datos.
@@ -184,16 +187,20 @@ async function sync(cambio) {
   // PowerSales solo acepta POST para crear/actualizar productos
   await ps.post('/products', { data: [payload] });
 
-  // 1. Armar y enviar el catálogo de listas de precios (headers)
+  // 1. Armar y enviar el catálogo de listas de precios (headers) - Optimizado con caché en memoria
   const priceListsNames = Object.keys(priceListsMapped);
   if (priceListsNames.length > 0) {
-    const plData = priceListsNames.map(pl => ({
-      Name: pl,
-      IsActive: 1,
-      IsDefault: 0,
-      PriceListNumber: pl
-    }));
-    await ps.post('/pricelists', { data: plData });
+    const priceListsToRegister = priceListsNames.filter(pl => !registeredPriceLists.has(pl));
+    if (priceListsToRegister.length > 0) {
+      const plData = priceListsToRegister.map(pl => ({
+        Name: pl,
+        IsActive: 1,
+        IsDefault: 0,
+        PriceListNumber: pl
+      }));
+      await ps.post('/pricelists', { data: plData });
+      priceListsToRegister.forEach(pl => registeredPriceLists.add(pl));
+    }
 
     // 2. Armar y enviar los detalles de precios para este artículo
     const costVal = parseFloat(row['Costo_Ult_Compra']) || 0;

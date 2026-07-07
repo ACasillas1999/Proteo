@@ -126,6 +126,7 @@ export default function Payload() {
                   <th>Operación</th>
                   <th>Intentos</th>
                   <th>Estado</th>
+                  <th>Latencia</th>
                   <th>Fecha sync</th>
                   <th>Payload</th>
                 </tr>
@@ -147,6 +148,9 @@ export default function Payload() {
                       <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{r.operacion}</td>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{r.intentos}</td>
                       <td><span className={`badge ${est.cls}`}>{est.label}</span></td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                        {r.latency_ms !== null && r.latency_ms !== undefined ? `${(r.latency_ms / 1000).toFixed(2)}s` : '—'}
+                      </td>
                       <td style={{ color: 'var(--text-muted)' }}>{fmtDate(r.fecha_sync)}</td>
                       <td>
                         {hasPayload ? (
@@ -201,6 +205,11 @@ export default function Payload() {
               <span style={{ color: 'var(--text-muted)', fontSize: 12, alignSelf: 'center' }}>
                 {modal.intentos} intento(s)
               </span>
+              {modal.latency_ms !== null && modal.latency_ms !== undefined && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 12, alignSelf: 'center' }}>
+                  ⏱️ Latencia: {(modal.latency_ms / 1000).toFixed(2)}s ({modal.latency_ms} ms)
+                </span>
+              )}
             </div>
 
             {modal.error_msg && (

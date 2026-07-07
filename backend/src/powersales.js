@@ -8,7 +8,7 @@ const ps = axios.create({
     'Content-Type': 'application/json',
     Accept:         'application/json',
   },
-  timeout: 15_000,
+  timeout: 30_000,
 });
 
 // Normaliza errores HTTP para mensajes legibles
