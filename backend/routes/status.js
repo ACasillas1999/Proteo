@@ -38,6 +38,7 @@ router.get('/', async (_req, res) => {
   }
 
   let lastWebhookAt = null;
+  let lastLatency   = null;
   try {
     const [webhookRows] = await localQuery('SELECT fecha_recepcion FROM webhook_logs ORDER BY id DESC LIMIT 1');
     if (webhookRows.length > 0) {
@@ -45,6 +46,15 @@ router.get('/', async (_req, res) => {
     }
   } catch (err) {
     console.error('[STATUS] Error fetching last webhook:', err.message);
+  }
+
+  try {
+    const [historyRows] = await localQuery('SELECT latency_ms FROM sync_history WHERE latency_ms IS NOT NULL ORDER BY id DESC LIMIT 1');
+    if (historyRows.length > 0) {
+      lastLatency = historyRows[0].latency_ms;
+    }
+  } catch (err) {
+    console.error('[STATUS] Error fetching last latency:', err.message);
   }
 
   // Siempre devuelve 200 (el frontend detecta db:'error' y lo muestra)
@@ -58,6 +68,7 @@ router.get('/', async (_req, res) => {
       lastEvent: binlog.lastEventAt,
       wsClients: getConnectedCount(),
       lastWebhookAt,
+      lastLatency,
     },
     counts,
     runtime: stats,

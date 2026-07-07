@@ -138,7 +138,7 @@ async function processChange(cambioId) {
   );
 
   console.error(`[PROC] ✗ #${cambioId} falló tras ${cfg.max_retries} intentos: ${lastError}`);
-  broadcast('sync_error', { id: cambioId, tabla, clave: clave_registro, error: lastError });
+  broadcast('sync_error', { id: cambioId, tabla, clave: clave_registro, error: lastError, ms: msFailed });
 }
 
 let _pollerTimer = null;

@@ -46,6 +46,7 @@ export default function BranchDashboard({ wsEvents = [] }) {
   const [config,    setConfig]    = useState({});
   const [status,    setStatus]    = useState(null);
   const [syncs,     setSyncs]     = useState([]);
+  const [latency,   setLatency]   = useState(null);
 
   const load = useCallback(() => {
     Promise.all([
@@ -71,6 +72,9 @@ export default function BranchDashboard({ wsEvents = [] }) {
       setLogs(logsData);
       setStatus(statusData);
       setSyncs(cambiosData);
+      if (statusData && statusData.worker?.lastLatency != null) {
+        setLatency(statusData.worker.lastLatency);
+      }
     });
 
     // Leer last_poll_at desde config
@@ -85,6 +89,13 @@ export default function BranchDashboard({ wsEvents = [] }) {
 
   useEffect(() => {
     const last = wsEvents[0];
+    if (last) {
+      if (last.event === 'sync_ok' && last.data?.ms !== undefined) {
+        setLatency(last.data.ms);
+      } else if (last.event === 'sync_error' && last.data?.ms !== undefined) {
+        setLatency(last.data.ms);
+      }
+    }
     if (
       last?.type === 'webhook_processed' ||
       last?.type === 'webhook_poll' ||
@@ -132,10 +143,11 @@ export default function BranchDashboard({ wsEvents = [] }) {
       </div>
 
       {/* Stats rápidos */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
         {[
           { label: 'OK hoy',         val: counts.hoy,       color: '#34d399' },
           { label: 'Errores hoy',    val: counts.error,     color: '#f87171' },
+          { label: 'Última Latencia',val: latency !== null ? `${latency} ms` : '—', color: '#a78bfa' },
           { label: 'Sync OK total',  val: counts.ok,       color: '#38bdf8' },
           { label: 'En cola',        val: counts.pendiente,color: '#fb923c' },
         ].map(k => (
