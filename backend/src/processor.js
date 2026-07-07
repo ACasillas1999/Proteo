@@ -34,6 +34,30 @@ function getStats() {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+class OfflineError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'OfflineError';
+  }
+}
+
+function isOfflineError(err) {
+  const msg = (err.message || '').toLowerCase();
+  return (
+    msg.includes('timeout') ||
+    msg.includes('network error') ||
+    msg.includes('econnrefused') ||
+    msg.includes('etimedout') ||
+    msg.includes('enotfound') ||
+    msg.includes('status code 502') ||
+    msg.includes('status code 503') ||
+    msg.includes('status code 504')
+  );
+}
+
+let _lastTimeoutAt = 0;
+const OFFLINE_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutos de pausa si la API externa está caída
+
 /**
  * Procesa un registro de Cambios por su ID.
  * Flujo:
@@ -116,6 +140,11 @@ async function processChange(cambioId) {
 
     } catch (err) {
       lastError = err.message;
+      if (isOfflineError(err)) {
+        _lastTimeoutAt = Date.now();
+        console.warn(`[PROC] ✗ #${cambioId} falló por desconexión de red: ${lastError}. Abortando reintentos para activar cooldown.`);
+        throw new OfflineError(lastError);
+      }
       if (attempt < cfg.max_retries) {
         const delay = cfg.retry_backoff_ms * attempt;
         console.warn(`[PROC] ✗ #${cambioId} intento ${attempt}: ${lastError}. Reintentando en ${delay}ms...`);
@@ -149,6 +178,12 @@ const POLL_TIMEOUT_MS = 90_000;
 
 async function pollPendingChanges() {
   if (_isPolling || config.isPaused()) return;
+
+  // Cooldown si la API de PowerSales está caída para no procesar en bucle e inflar latencia
+  if (Date.now() - _lastTimeoutAt < OFFLINE_COOLDOWN_MS) {
+    return;
+  }
+
   _isPolling = true;
 
   // Guardián: si en 90s la función no termina, liberar el lock para no bloquear la cola
@@ -169,7 +204,11 @@ async function pollPendingChanges() {
       await processChange(row.id);
     }
   } catch (err) {
-    console.error('[POLLER] Error:', err.message);
+    if (err instanceof OfflineError) {
+      console.warn(`[POLLER] Suspendiendo cola temporalmente: API de PowerSales fuera de línea (${err.message}).`);
+    } else {
+      console.error('[POLLER] Error:', err.message);
+    }
   } finally {
     clearTimeout(safetyTimer);
     _isPolling = false;
