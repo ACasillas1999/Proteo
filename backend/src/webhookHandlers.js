@@ -31,20 +31,25 @@ async function handleProductUpdate(key, data) {
   }
 
   const fieldMap     = await getFieldMapping('articulo');
-  const updateFields = [];
-  const updateValues = [];
+  const updatePairsMap = new Map();
 
   for (const def of ARTICULO_FIELDS) {
     if (data[def.field] !== undefined) {
       const erpCol = fieldMap[def.field] !== undefined ? fieldMap[def.field] : def.defaultErp;
       if (erpCol && def.type !== 'fixed' && def.type !== 'fixedId') {
-        updateFields.push(`${erpCol} = ?`);
         let val = data[def.field];
         if (def.type === 'boolean')                       val = val ? 1 : 0;
         else if (def.type === 'number' || def.type === 'numStr') val = val === null ? null : Number(val);
-        updateValues.push(val);
+        updatePairsMap.set(erpCol, val);
       }
     }
+  }
+
+  const updateFields = [];
+  const updateValues = [];
+  for (const [col, val] of updatePairsMap.entries()) {
+    updateFields.push(`${col} = ?`);
+    updateValues.push(val);
   }
 
   if (updateFields.length === 0) {
@@ -84,8 +89,7 @@ async function handleCustomerUpdate(key, data) {
 
   try {
     const fieldMap  = await getFieldMapping('cliente');
-    const colNames  = []; // ERP column names
-    const colValues = []; // values for those columns
+    const customerPairsMap = new Map();
     let emailValue  = undefined;
 
     for (const def of CLIENTE_FIELDS) {
@@ -96,11 +100,13 @@ async function handleCustomerUpdate(key, data) {
           let val = data[def.field];
           if (def.type === 'boolean')                            val = val ? 1 : 0;
           else if (def.type === 'number' || def.type === 'numStr') val = val === null ? null : Number(val);
-          colNames.push(erpCol);
-          colValues.push(val);
+          customerPairsMap.set(erpCol, val);
         }
       }
     }
+
+    const colNames  = Array.from(customerPairsMap.keys());
+    const colValues = Array.from(customerPairsMap.values());
 
     // lookupCol = columna ERP que corresponde a CustomerNumber (IdGlobal, Cliente, etc.)
     // Se configura en Mapeo UI: CustomerNumber → IdGlobal
@@ -219,14 +225,16 @@ async function handleOrderInsert(data) {
     }
 
     const cabCols = await validColumns(cabTable);
-    const headerPairs = [];
+    const headerPairsMap = new Map();
     for (const def of PS_FIELDS_CABECERA) {
       const erpCol = fieldMapCab[def.field];
       if (!erpCol || !cabCols.includes(erpCol)) continue;
       const val = getPath(data, def.field);
       if (val === undefined) continue;
-      headerPairs.push([erpCol, val]);
+      headerPairsMap.set(erpCol, val);
     }
+
+    const headerPairs = Array.from(headerPairsMap.entries());
 
     if (headerPairs.length === 0) {
       await saveWebhookLog('orders', orderNumber, data, 2, 'Ningún campo de cabecera mapeado');
@@ -259,14 +267,15 @@ async function handleOrderInsert(data) {
       const detCols = await validColumns(detTable);
 
       for (const item of details) {
-        const rowPairs = [];
+        const rowPairsMap = new Map();
         for (const def of PS_FIELDS_DETALLE) {
           const erpCol = fieldMapDet[def.field];
           if (!erpCol || !detCols.includes(erpCol)) continue;
           const val = def.field === 'OrderNumber' ? orderNumber : item[def.field];
           if (val === undefined) continue;
-          rowPairs.push([erpCol, val]);
+          rowPairsMap.set(erpCol, val);
         }
+        const rowPairs = Array.from(rowPairsMap.entries());
         if (rowPairs.length > 0) await insertRow(detTable, rowPairs);
       }
       console.log(`[WEBHOOK] Pedido ${orderNumber}: ${details.length} renglón(es) insertados en '${detTable}'`);
