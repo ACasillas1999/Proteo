@@ -229,8 +229,19 @@ async function handleOrderInsert(data) {
     for (const def of PS_FIELDS_CABECERA) {
       const erpCol = fieldMapCab[def.field];
       if (!erpCol || !cabCols.includes(erpCol)) continue;
-      const val = getPath(data, def.field);
+      let val = getPath(data, def.field);
       if (val === undefined) continue;
+
+      // Conversión especial para Condicion_Pago (max 4 caracteres)
+      if (erpCol.toLowerCase() === 'condicion_pago' && typeof val === 'string') {
+        const upperVal = val.toUpperCase().trim();
+        if (upperVal === 'CONTADO') {
+          val = 'CONT';
+        } else if (upperVal === 'CREDITO') {
+          val = 'CRED';
+        }
+      }
+
       headerPairsMap.set(erpCol, val);
     }
 
