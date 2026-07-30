@@ -238,11 +238,25 @@ async function handleOrderInsert(data) {
         if (upperVal === 'CONTADO') {
           val = 'CONT';
         } else if (upperVal === 'CREDITO') {
-          val = 'CRED';
+          val = 'CRE';
         }
       }
-
       headerPairsMap.set(erpCol, val);
+    }
+
+    // Reglas de negocio para OrderType (Sucursal / ANEXO)
+    const orderTypeVal = typeof data.OrderType === 'string' ? data.OrderType.toUpperCase().trim() : '';
+    if (orderTypeVal.includes('ANEXO')) {
+      if (cabCols.includes('Estatus_Pedido')) {
+        headerPairsMap.set('Estatus_Pedido', 'P');
+      }
+      if (cabCols.includes('AfectarInventario')) {
+        headerPairsMap.set('AfectarInventario', 1);
+      }
+    } else if (orderTypeVal.includes('SUCURSAL')) {
+      if (cabCols.includes('Estatus_Pedido')) {
+        headerPairsMap.set('Estatus_Pedido', 'P');
+      }
     }
 
     const headerPairs = Array.from(headerPairsMap.entries());
