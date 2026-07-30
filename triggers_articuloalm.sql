@@ -12,7 +12,6 @@ CREATE TRIGGER trg_articuloalm_after_insert
 AFTER INSERT ON articuloalm
 FOR EACH ROW
 BEGIN
-  -- ⚡ Solo actuar si el cambio lo hizo el sistema (opcional: quitar el IF si quieres que registre todos los cambios)
   IF USER() LIKE 'root@%' THEN
     INSERT INTO `Cambios`
         (`tabla`, `clave_registro`, `campos_modificados`, `fecha_cambio`, `sincronizado`)
@@ -29,14 +28,10 @@ AFTER UPDATE ON articuloalm
 FOR EACH ROW
 BEGIN
   DECLARE campos TEXT DEFAULT '';
-
   IF USER() LIKE 'root@%' THEN
-    -- Solo impactar el inventario si cambia la existencia física
     IF NOT (OLD.`Existencia_Fisica`  <=> NEW.`Existencia_Fisica`)  THEN SET campos = CONCAT(campos, 'Existencia_Fisica,');  END IF;
-
-    -- Solo insertar si realmente cambió la existencia
     IF campos != '' THEN
-      SET campos = LEFT(campos, CHAR_LENGTH(campos) - 1); -- quitar coma final
+      SET campos = LEFT(campos, CHAR_LENGTH(campos) - 1);
       INSERT INTO `Cambios`
           (`tabla`, `clave_registro`, `campos_modificados`, `fecha_cambio`, `sincronizado`)
       VALUES

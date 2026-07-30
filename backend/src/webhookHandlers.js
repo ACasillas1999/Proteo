@@ -2,7 +2,8 @@
 const { query }                      = require('./db');
 const { PS_FIELDS: ARTICULO_FIELDS } = require('./handlers/articulo');
 const { PS_FIELDS: CLIENTE_FIELDS }  = require('./handlers/cliente');
-const { getFieldMapping, saveWebhookLog: saveLogDb } = require('./localdb');
+const { PS_FIELDS_CABECERA, PS_FIELDS_DETALLE } = require('./handlers/pedido');
+const { getFieldMapping, getConfig, saveWebhookLog: saveLogDb } = require('./localdb');
 const { broadcast }                  = require('./websocket');
 
 async function saveWebhookLog(entidad, clave_registro, datos, estado, error_msg = null) {
@@ -165,4 +166,119 @@ async function handleCustomerUpdate(key, data) {
   }
 }
 
-module.exports = { handleProductUpdate, handleCustomerUpdate };
+// Lee un valor de `obj` siguiendo un path con puntos (ej. 'CustomerId.Id')
+function getPath(obj, path) {
+  return path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
+}
+
+async function tableExists(table) {
+  const [rows] = await query('SHOW TABLES');
+  return rows.some(r => Object.values(r)[0] === table);
+}
+
+async function validColumns(table) {
+  const [rows] = await query(`SHOW COLUMNS FROM \`${table}\``);
+  return rows.map(r => r.Field);
+}
+
+async function insertRow(table, colValuePairs) {
+  const cols = colValuePairs.map(([c]) => c);
+  const vals = colValuePairs.map(([, v]) => v);
+  const placeholders = cols.map(() => '?').join(', ');
+  const colsSql = cols.map(c => `\`${c}\``).join(', ');
+  const [result] = await query(`INSERT INTO \`${table}\` (${colsSql}) VALUES (${placeholders})`, vals);
+  return result;
+}
+
+// Aplica un pedido (webhook 'orders') a las tablas de Magic elegidas en el Mapeo.
+// Corre en la sucursal (aquí sí hay conexión directa al ERP) — ver webhookPoller.js.
+async function handleOrderInsert(data) {
+  const orderNumber = data.OrderNumber;
+  if (!orderNumber) {
+    console.error('[WEBHOOK] Pedido sin OrderNumber:', data);
+    await saveWebhookLog('orders', 'desconocido', data, 2, 'Pedido sin OrderNumber');
+    return;
+  }
+
+  try {
+    const [fieldMapCab, fieldMapDet, cabTable, detTable] = await Promise.all([
+      getFieldMapping('pedido_cabecera'),
+      getFieldMapping('pedido_detalle'),
+      getConfig('pedido_cabecera_table', ''),
+      getConfig('pedido_detalle_table', ''),
+    ]);
+
+    if (!cabTable) {
+      console.log(`[WEBHOOK] Pedido ${orderNumber}: no hay tabla de cabecera configurada en Mapeo`);
+      await saveWebhookLog('orders', orderNumber, data, 2, 'Tabla de cabecera no configurada en Mapeo');
+      return;
+    }
+    if (!(await tableExists(cabTable))) {
+      await saveWebhookLog('orders', orderNumber, data, 2, `Tabla de cabecera '${cabTable}' no existe en el ERP`);
+      return;
+    }
+
+    const cabCols = await validColumns(cabTable);
+    const headerPairs = [];
+    for (const def of PS_FIELDS_CABECERA) {
+      const erpCol = fieldMapCab[def.field];
+      if (!erpCol || !cabCols.includes(erpCol)) continue;
+      const val = getPath(data, def.field);
+      if (val === undefined) continue;
+      headerPairs.push([erpCol, val]);
+    }
+
+    if (headerPairs.length === 0) {
+      await saveWebhookLog('orders', orderNumber, data, 2, 'Ningún campo de cabecera mapeado');
+      return;
+    }
+
+    const insertResult = await insertRow(cabTable, headerPairs);
+    console.log(`[WEBHOOK] Pedido ${orderNumber}: cabecera insertada en '${cabTable}'`);
+
+    // Si la tabla destino es cbpedvta y tenemos el insertId (auto_increment),
+    // actualizamos el consecutivo en ctrlcons para evitar desfases
+    if (cabTable.toLowerCase() === 'cbpedvta' && insertResult && insertResult.insertId) {
+      try {
+        await query(
+          "UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'NPED'",
+          [insertResult.insertId]
+        );
+        console.log(`[WEBHOOK] Consecutivo de pedido (Tipo = 'NPED') actualizado en ctrlcons a ${insertResult.insertId}`);
+      } catch (ctrlErr) {
+        console.error(`[WEBHOOK] Error al actualizar consecutivo en ctrlcons:`, ctrlErr.message);
+      }
+    }
+
+    const details = Array.isArray(data.details) ? data.details : [];
+    if (details.length > 0 && detTable) {
+      if (!(await tableExists(detTable))) {
+        await saveWebhookLog('orders', orderNumber, data, 2, `Cabecera insertada, pero tabla de renglones '${detTable}' no existe`);
+        return;
+      }
+      const detCols = await validColumns(detTable);
+
+      for (const item of details) {
+        const rowPairs = [];
+        for (const def of PS_FIELDS_DETALLE) {
+          const erpCol = fieldMapDet[def.field];
+          if (!erpCol || !detCols.includes(erpCol)) continue;
+          const val = def.field === 'OrderNumber' ? orderNumber : item[def.field];
+          if (val === undefined) continue;
+          rowPairs.push([erpCol, val]);
+        }
+        if (rowPairs.length > 0) await insertRow(detTable, rowPairs);
+      }
+      console.log(`[WEBHOOK] Pedido ${orderNumber}: ${details.length} renglón(es) insertados en '${detTable}'`);
+    } else if (details.length > 0 && !detTable) {
+      console.log(`[WEBHOOK] Pedido ${orderNumber}: cabecera insertada, pero no hay tabla de renglones configurada`);
+    }
+
+    await saveWebhookLog('orders', orderNumber, data, 1, null);
+  } catch (dbErr) {
+    console.error(`[WEBHOOK] Error DB al insertar pedido ${orderNumber}:`, dbErr.message);
+    await saveWebhookLog('orders', orderNumber, data, 2, `Error DB al insertar: ${dbErr.message}`);
+  }
+}
+
+module.exports = { handleProductUpdate, handleCustomerUpdate, handleOrderInsert };

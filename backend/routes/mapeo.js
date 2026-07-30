@@ -13,18 +13,24 @@ router.get('/', async (_req, res) => {
     const fieldMap          = await getFieldMapping('articulo');
     const fieldMapAlm       = await getFieldMapping('articuloalm');
     const fieldMapCli       = await getFieldMapping('cliente');
+    const fieldMapPedCab    = await getFieldMapping('pedido_cabecera');
+    const fieldMapPedDet    = await getFieldMapping('pedido_detalle');
     const categories        = await getConfig('articulo_categories', {
       MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
       HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
     });
     const defaultCategoryId = await getConfig('articulo_defaultCategoryId', 1);
+    const pedidoCabeceraTable = await getConfig('pedido_cabecera_table', '');
+    const pedidoDetalleTable  = await getConfig('pedido_detalle_table', '');
 
     res.json({ 
       ok: true, 
       data: { 
         articulo: { fieldMap, categories, defaultCategoryId },
         articuloalm: { fieldMap: fieldMapAlm },
-        cliente: { fieldMap: fieldMapCli }
+        cliente: { fieldMap: fieldMapCli },
+        pedido_cabecera: { fieldMap: fieldMapPedCab, table: pedidoCabeceraTable },
+        pedido_detalle: { fieldMap: fieldMapPedDet, table: pedidoDetalleTable },
       } 
     });
   } catch (err) {
@@ -40,6 +46,8 @@ router.put('/', async (req, res) => {
     const art    = incoming.articulo ?? {};
     const artAlm = incoming.articuloalm ?? {};
     const cli    = incoming.cliente ?? {};
+    const pedCab = incoming.pedido_cabecera ?? {};
+    const pedDet = incoming.pedido_detalle ?? {};
 
     if (art.fieldMap)          await saveFieldMapping('articulo', art.fieldMap);
     if (art.categories)        await setConfig('articulo_categories', art.categories);
@@ -47,6 +55,11 @@ router.put('/', async (req, res) => {
     
     if (artAlm.fieldMap)       await saveFieldMapping('articuloalm', artAlm.fieldMap);
     if (cli.fieldMap)          await saveFieldMapping('cliente', cli.fieldMap);
+
+    if (pedCab.fieldMap)              await saveFieldMapping('pedido_cabecera', pedCab.fieldMap);
+    if (pedCab.table !== undefined)   await setConfig('pedido_cabecera_table', pedCab.table);
+    if (pedDet.fieldMap)              await saveFieldMapping('pedido_detalle', pedDet.fieldMap);
+    if (pedDet.table !== undefined)   await setConfig('pedido_detalle_table', pedDet.table);
 
     res.json({ ok: true, data: incoming });
   } catch (err) {
@@ -115,18 +128,66 @@ router.get('/fields/cliente', async (_req, res) => {
   res.json({ ok: true, psFields: PS_FIELDS, erpColumns, dbConnected });
 });
 
+// GET /api/mapeo/fields/pedido_cabecera — campos PS disponibles para cabecera de pedido
+// (sin erpColumns — la tabla destino la elige el usuario, ver /tables y /columns/:table)
+router.get('/fields/pedido_cabecera', async (_req, res) => {
+  const { PS_FIELDS_CABECERA } = require('../src/handlers/pedido');
+  res.json({ ok: true, psFields: PS_FIELDS_CABECERA });
+});
+
+// GET /api/mapeo/fields/pedido_detalle — campos PS disponibles para renglones de pedido
+router.get('/fields/pedido_detalle', async (_req, res) => {
+  const { PS_FIELDS_DETALLE } = require('../src/handlers/pedido');
+  res.json({ ok: true, psFields: PS_FIELDS_DETALLE });
+});
+
+// GET /api/mapeo/tables — lista de tablas del ERP, para el selector de tabla de pedidos
+router.get('/tables', async (_req, res) => {
+  const { query } = require('../src/db');
+  try {
+    const [rows] = await query('SHOW TABLES');
+    const tables = rows.map(r => Object.values(r)[0]);
+    res.json({ ok: true, tables });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, tables: [] });
+  }
+});
+
+// GET /api/mapeo/columns/:table — columnas de una tabla específica del ERP
+// Valida el nombre contra SHOW TABLES antes de interpolar (evita inyección SQL).
+router.get('/columns/:table', async (req, res) => {
+  const { query } = require('../src/db');
+  try {
+    const [tableRows] = await query('SHOW TABLES');
+    const validTables = tableRows.map(r => Object.values(r)[0]);
+    if (!validTables.includes(req.params.table)) {
+      return res.status(400).json({ ok: false, error: 'Tabla no existe en el ERP', columns: [] });
+    }
+
+    const [rows] = await query(`SHOW COLUMNS FROM \`${req.params.table}\``);
+    const columns = rows.map(r => r.Field);
+    res.json({ ok: true, columns });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, columns: [] });
+  }
+});
+
 // GET /api/mapeo/branch/:branchId — sucursales jalan su mapeo merged (global + overrides)
 router.get('/branch/:branchId', async (req, res) => {
   try {
     const branchId = parseInt(req.params.branchId);
     if (!branchId) return res.status(400).json({ error: 'branchId inválido' });
 
-    const [articulo, articuloalm, cliente] = await Promise.all([
+    const [articulo, articuloalm, cliente, pedido_cabecera, pedido_detalle] = await Promise.all([
       getMappingForBranch('articulo',    branchId),
       getMappingForBranch('articuloalm', branchId),
       getMappingForBranch('cliente',     branchId),
+      getMappingForBranch('pedido_cabecera', branchId),
+      getMappingForBranch('pedido_detalle',  branchId),
     ]);
-    res.json({ ok: true, data: { articulo, articuloalm, cliente } });
+    const pedido_cabecera_table = await getConfig('pedido_cabecera_table', '');
+    const pedido_detalle_table  = await getConfig('pedido_detalle_table', '');
+    res.json({ ok: true, data: { articulo, articuloalm, cliente, pedido_cabecera, pedido_detalle, pedido_cabecera_table, pedido_detalle_table } });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

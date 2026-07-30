@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const { saveWebhookLog: saveLogDb, localQuery } = require('../src/localdb');
 const { broadcast } = require('../src/websocket');
+const { authenticateWebhook } = require('../src/authMiddleware');
 
 async function saveWebhookLog(entidad, clave_registro, datos, estado, error_msg = null, branch_id = null) {
   try {
@@ -17,23 +18,6 @@ async function saveWebhookLog(entidad, clave_registro, datos, estado, error_msg 
     branch_id,
     fecha_recepcion: new Date().toISOString()
   });
-}
-
-function authenticateWebhook(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = require('../src/config').get().psToken || process.env.PS_TOKEN;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.warn('[WEBHOOK AUTH] Rejected: Missing or invalid Authorization header');
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-  }
-
-  const providedToken = authHeader.split(' ')[1];
-  if (providedToken !== token) {
-    console.warn(`[WEBHOOK AUTH] Rejected: Invalid token. Provided: "${providedToken.substring(0, 8)}...", expected: "${token.substring(0, 8)}..."`);
-    return res.status(403).json({ error: 'Forbidden: Invalid token' });
-  }
-  next();
 }
 
 // GET /api/webhooks/logs — historial paginado
@@ -111,7 +95,9 @@ router.post('/powersales/object-update', authenticateWebhook, async (req, res) =
       }
 
       // BranchId en el payload de PowerSales llega como objeto: { Id: 9, Number: "9", Name: "..." }
-      const rawBranch = record.data?.BranchId;
+      // En 'orders' no viene en la raíz — solo está anidado en details_promo[].order.BranchId
+      const rawBranch = record.data?.BranchId
+        ?? record.data?.details_promo?.[0]?.order?.BranchId;
       const branchId  = typeof rawBranch === 'object' ? (rawBranch?.Id ?? null) : (rawBranch ?? null);
 
       const objType = record.object;

@@ -11,6 +11,8 @@ const { startBinlog }       = require('./src/binlog');
 const { startPoller }       = require('./src/processor');
 const { migrate }           = require('./src/localdb');
 const { startWebhookPoller } = require('./src/webhookPoller');
+const { attach: attachBranchSocket } = require('./src/branchSocket');
+const { startBranchSocketClient }    = require('./src/branchSocketClient');
 
 const statusRouter        = require('./routes/status');
 const cambiosRouter       = require('./routes/cambios');
@@ -21,6 +23,7 @@ const syncHistoryRouter   = require('./routes/syncHistory');
 const webhooksRouter      = require('./routes/webhooks');
 const grupoascencioRouter = require('./routes/grupoascencio');
 const branchesRouter      = require('./routes/branches');
+const inventoryRouter     = require('./routes/inventory');
 
 const app = express();
 app.use(cors());
@@ -36,6 +39,7 @@ app.use('/api/sync-history', syncHistoryRouter);   // GET /api/sync-history
 app.use('/api/webhooks',     webhooksRouter);      // POST /api/webhooks/...
 app.use('/api/grupoascencio', grupoascencioRouter); // GET/POST /api/grupoascencio/pricelists...
 app.use('/api/branches',     branchesRouter);       // POST /api/branches/heartbeat, GET /status
+app.use('/api/inventory',    inventoryRouter);      // GET /api/inventory?branch_id=...
 
 // Frontend estático (build de React)
 const frontendDist = path.join(__dirname, '../frontend/dist');
@@ -62,6 +66,7 @@ migrate()
     // ── HTTP server
     const PORT = parseInt(process.env.PORT) || 3001;
     const server = http.createServer(app);
+    attachBranchSocket(server); // WS sucursal↔maestro sobre el mismo puerto/túnel
     server.listen(PORT, () => console.log(`[API] REST server → http://localhost:${PORT}`));
 
     // ── WebSocket
@@ -73,6 +78,9 @@ migrate()
 
     // ── Webhook Poller (solo sucursales con CENTRAL_URL en .env)
     startWebhookPoller(30_000);
+
+    // ── Branch WS client (solo sucursales con CENTRAL_URL en .env)
+    startBranchSocketClient();
 
     // ── Binlog CDC
     startBinlog().catch(err => {

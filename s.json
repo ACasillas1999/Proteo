@@ -1,0 +1,91 @@
+{
+    "id": 55,
+    "entidad": "orders",
+    "estado": 1,
+    "fecha_recepcion": "2026-07-28T20:21:44.000Z",
+    "datos": {
+        "Id": 80,
+        "OrderNumber": "VIC00000068W",
+        "OrderDate": "2026-07-28",
+        "DeliveryDate": "2026-07-29",
+        "TotalQty": "1.00",
+        "TotalAmount": "99.16",
+        "PaymentType": "CONTADO",
+        "OrderType": "Sucursal",
+        "TypeSend": "Recoge",
+        "StatusId": 3,
+        "StatusName": "SIN DEFINIR",
+        "IsDelivered": 0,
+        "CreatedDate": "2026-07-28 14:20:44",
+        "ModifiedDate": "2026-07-28 14:21:41",
+        "CustomerId": {
+            "Id": 4,
+            "CustomerNumber": "15",
+            "Name": "ALVAREZ CAZARES AZAEL SIUUUU",
+            "Email": "sima-jar@yahoo.com.mx",
+            "TIN": "AACA840501D60",
+            "Address1": "CALLE GUANAJUATO 60",
+            "PriceListId": "Precio_Lista",
+            "IsCredit": 0,
+            "Telephone": "31806659"
+        },
+        "RouteId": {
+            "Id": 2,
+            "Name": "VICENTE",
+            "Warehouse": "1"
+        },
+        "RepId": {
+            "Id": 3,
+            "EmployeeNumber": "2",
+            "FirstName": "VICENTE",
+            "UserName": "VICENTE"
+        },
+        "details": [
+            {
+                "Id": 96,
+                "ProductId": "1020632",
+                "QtyOrdered": "1.00",
+                "QtyDelivered": "0.00",
+                "Price": "99.16",
+                "TotalAmount": "99.16",
+                "Warehouse": "GENERAL",
+                "WarehouseId": "1"
+            }
+        ],
+        "details_promo": [
+            {
+                "Id": 96,
+                "ProductId": 316,
+                "QtyOrdered": "1.00",
+                "Price": "99.16",
+                "TotalAmount": "99.16",
+                "product": {
+                    "Id": 316,
+                    "SKU": "1020632",
+                    "Name": "CARGA DEL 32 EMP-20",
+                    "BrandId": 99,
+                    "CategoryId": 250,
+                    "LineId": 96,
+                    "Cost": "0.00"
+                },
+                "order": {
+                    "Id": 80,
+                    "CustomerId": 4,
+                    "RouteId": 2,
+                    "RepId": 3,
+                    "BranchId": 9,
+                    "OrderNumber": "VIC00000068W",
+                    "PurchaseOrderNumber": "958",
+                    "warehouse": {
+                        "Id": 1,
+                        "Number": "01",
+                        "Name": "GENERAL",
+                        "Description": "almacen aiesa",
+                        "BranchId": 9,
+                        "WarehouseNumber": "1"
+                    }
+                }
+            }
+        ]
+    }
+}

@@ -3,7 +3,7 @@ const os    = require('os');
 const axios = require('axios');
 const { query }                             = require('./db');
 const { getConfig, setConfig, saveWebhookLog, saveFieldMapping } = require('./localdb');
-const { handleProductUpdate, handleCustomerUpdate } = require('./webhookHandlers');
+const { handleProductUpdate, handleCustomerUpdate, handleOrderInsert } = require('./webhookHandlers');
 const { broadcast }                         = require('./websocket');
 
 const POLL_INTERVAL_MS = 30_000;
@@ -48,6 +48,10 @@ async function syncMapping() {
     if (data.articulo)    await saveFieldMapping('articulo',    filterLocalFields(data.articulo));
     if (data.articuloalm) await saveFieldMapping('articuloalm', filterLocalFields(data.articuloalm));
     if (data.cliente)     await saveFieldMapping('cliente',     filterLocalFields(data.cliente));
+    if (data.pedido_cabecera) await saveFieldMapping('pedido_cabecera', filterLocalFields(data.pedido_cabecera));
+    if (data.pedido_detalle)  await saveFieldMapping('pedido_detalle',  filterLocalFields(data.pedido_detalle));
+    if (data.pedido_cabecera_table !== undefined) await setConfig('pedido_cabecera_table', data.pedido_cabecera_table);
+    if (data.pedido_detalle_table !== undefined)  await setConfig('pedido_detalle_table',  data.pedido_detalle_table);
 
     console.log(`[MAPEO SYNC] Mapeo actualizado desde maestro para branch ${branchId} (BranchId preservado local)`);
   } catch (err) {
@@ -107,6 +111,7 @@ async function pollWebhooks() {
           const key = buildKey(rec.entidad, rec.clave_registro);
           if      (rec.entidad === 'articulo') await handleProductUpdate(key, data);
           else if (rec.entidad === 'cliente')  await handleCustomerUpdate(key, data);
+          else if (rec.entidad === 'orders')   await handleOrderInsert(data);
           else await saveWebhookLog(rec.entidad, rec.clave_registro, data, 2, 'Entidad no soportada en poller');
         } catch (err) {
           console.error(`[WEBHOOK POLLER] Error procesando webhook #${rec.id}:`, err.message);

@@ -25,6 +25,12 @@ export default function Mapeo() {
   const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [], dbConnected: true });
   const [fieldsCli, setFieldsCli] = useState({ psFields: [], erpColumns: [], dbConnected: true });
 
+  // Pedido: la tabla ERP destino no está fija, el usuario la elige.
+  const [pedPsFields, setPedPsFields] = useState({ pedido_cabecera: [], pedido_detalle: [] });
+  const [tables,      setTables]      = useState([]);
+  const [tablesOk,    setTablesOk]    = useState(true);
+  const [pedidoCols,  setPedidoCols]  = useState({ pedido_cabecera: [], pedido_detalle: [] });
+
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState(false);
   const [filter,  setFilter]  = useState('');
@@ -55,8 +61,11 @@ export default function Mapeo() {
       axios.get('/api/mapeo'),
       axios.get('/api/mapeo/fields'),
       axios.get('/api/mapeo/fields/articuloalm'),
-      axios.get('/api/mapeo/fields/cliente')
-    ]).then(([m, fArt, fAlm, fCli]) => {
+      axios.get('/api/mapeo/fields/cliente'),
+      axios.get('/api/mapeo/fields/pedido_cabecera'),
+      axios.get('/api/mapeo/fields/pedido_detalle'),
+      axios.get('/api/mapeo/tables'),
+    ]).then(([m, fArt, fAlm, fCli, fPedCab, fPedDet, tablesRes]) => {
       
       const setupFields = (fData, savedMap) => {
         const psFields = fData.psFields ?? [];
@@ -88,16 +97,42 @@ export default function Mapeo() {
       const almData = setupFields(fAlm.data, m.data.data?.articuloalm?.fieldMap);
       const cliData = setupFields(fCli.data, m.data.data?.cliente?.fieldMap);
 
+      const pedCabTable = m.data.data?.pedido_cabecera?.table ?? '';
+      const pedDetTable  = m.data.data?.pedido_detalle?.table ?? '';
+
       setMapeo({
         ...m.data.data,
         articulo: { ...m.data.data?.articulo, fieldMap: artData.initialFieldMap },
         articuloalm: { ...m.data.data?.articuloalm, fieldMap: almData.initialFieldMap },
         cliente: { ...m.data.data?.cliente, fieldMap: cliData.initialFieldMap },
+        pedido_cabecera: { fieldMap: m.data.data?.pedido_cabecera?.fieldMap ?? {}, table: pedCabTable },
+        pedido_detalle: { fieldMap: m.data.data?.pedido_detalle?.fieldMap ?? {}, table: pedDetTable },
       });
 
       setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns, dbConnected: artData.dbConnected });
       setFieldsAlm({ psFields: almData.psFields, erpColumns: almData.erpColumns, dbConnected: almData.dbConnected });
       setFieldsCli({ psFields: cliData.psFields, erpColumns: cliData.erpColumns, dbConnected: cliData.dbConnected });
+
+      setPedPsFields({
+        pedido_cabecera: fPedCab.data.psFields ?? [],
+        pedido_detalle: fPedDet.data.psFields ?? [],
+      });
+      setTables(tablesRes.data.tables ?? []);
+      setTablesOk(tablesRes.data.ok !== false);
+
+      // Si ya había tabla elegida (guardada previamente), carga sus columnas de una vez
+      const colFetches = [];
+      if (pedCabTable) colFetches.push(
+        axios.get(`/api/mapeo/columns/${encodeURIComponent(pedCabTable)}`)
+          .then(r => setPedidoCols(p => ({ ...p, pedido_cabecera: r.data.columns ?? [] })))
+          .catch(() => {})
+      );
+      if (pedDetTable) colFetches.push(
+        axios.get(`/api/mapeo/columns/${encodeURIComponent(pedDetTable)}`)
+          .then(r => setPedidoCols(p => ({ ...p, pedido_detalle: r.data.columns ?? [] })))
+          .catch(() => {})
+      );
+      Promise.all(colFetches);
 
       setDbRef({
         host: fArt.data.dbHost || 'localhost',
@@ -106,6 +141,15 @@ export default function Mapeo() {
 
     }).finally(() => setLoading(false));
   }, []);
+
+  // Cambiar la tabla ERP elegida para cabecera/detalle de pedido — refresca sus columnas
+  const setPedidoTable = (tab, tableName) => {
+    setMapeo(p => ({ ...p, [tab]: { ...p[tab], table: tableName } }));
+    if (!tableName) { setPedidoCols(p => ({ ...p, [tab]: [] })); return; }
+    axios.get(`/api/mapeo/columns/${encodeURIComponent(tableName)}`)
+      .then(r => setPedidoCols(p => ({ ...p, [tab]: r.data.columns ?? [] })))
+      .catch(() => setPedidoCols(p => ({ ...p, [tab]: [] })));
+  };
 
   const save = async () => {
     try { await axios.put('/api/mapeo', mapeo); setSaved(true); setTimeout(() => setSaved(false), 2500); }
@@ -125,12 +169,18 @@ export default function Mapeo() {
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
   // Resolve which data/fields to show based on active tab
-  const entityForTab = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' };
-  const fieldsForTab = { articulo: fieldsArt, pricelists: fieldsArt, articuloalm: fieldsAlm, cliente: fieldsCli };
+  const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle';
+  const entityForTab = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente', pedido_cabecera: 'pedido_cabecera', pedido_detalle: 'pedido_detalle' };
+  const fieldsForTab = {
+    articulo: fieldsArt, pricelists: fieldsArt, articuloalm: fieldsAlm, cliente: fieldsCli,
+    pedido_cabecera: { psFields: pedPsFields.pedido_cabecera, erpColumns: pedidoCols.pedido_cabecera, dbConnected: tablesOk },
+    pedido_detalle: { psFields: pedPsFields.pedido_detalle, erpColumns: pedidoCols.pedido_detalle, dbConnected: tablesOk },
+  };
   const currentData = mapeo[entityForTab[activeTab] ?? 'articulo'];
   const currentFields = fieldsForTab[activeTab] ?? fieldsArt;
   const fieldMap = currentData?.fieldMap ?? {};
   const dbConnected = currentFields.dbConnected !== false;
+  const currentTable = currentData?.table ?? '';
 
   const psFields = Array.isArray(currentFields.psFields) ? currentFields.psFields : [];
   const erpCols  = currentFields.erpColumns ?? [];
@@ -253,7 +303,35 @@ export default function Mapeo() {
             onClick={() => { setActiveTab('cliente'); setFilter(''); }}>
             👥 Clientes (customers)
           </button>
+          <button 
+            className={`btn ${activeTab === 'pedido_cabecera' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('pedido_cabecera'); setFilter(''); }}>
+            📋 Pedido (Cabecera)
+          </button>
+          <button 
+            className={`btn ${activeTab === 'pedido_detalle' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('pedido_detalle'); setFilter(''); }}>
+            📑 Pedido (Renglones)
+          </button>
         </div>
+
+        {/* Selector de tabla ERP — solo pestañas de pedido, la tabla no está fija */}
+        {isPedidoTab && selectedBranch === null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Tabla ERP destino:</label>
+            <select
+              value={currentTable}
+              onChange={e => setPedidoTable(activeTab, e.target.value)}
+              style={{ borderRadius: 'var(--radius)', minWidth: 220, fontWeight: 600 }}
+            >
+              <option value="">— elegir tabla —</option>
+              {tables.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {!currentTable && (
+              <span style={{ fontSize: 12, color: '#fb923c' }}>Elige una tabla para ver sus columnas</span>
+            )}
+          </div>
+        )}
 
         {/* Leyenda */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>

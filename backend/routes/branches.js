@@ -2,20 +2,7 @@
 const router = require('express').Router();
 const { upsertBranchStatus, getAllBranchStatuses } = require('../src/localdb');
 const { broadcast } = require('../src/websocket');
-
-function authenticateWebhook(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = require('../src/config').get().psToken || process.env.PS_TOKEN;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-  }
-  const providedToken = authHeader.split(' ')[1];
-  if (providedToken !== token) {
-    return res.status(403).json({ error: 'Forbidden: Invalid token' });
-  }
-  next();
-}
+const { authenticateWebhook } = require('../src/authMiddleware');
 
 // POST /api/branches/heartbeat — cada sucursal reporta su estado
 router.post('/heartbeat', authenticateWebhook, async (req, res) => {
