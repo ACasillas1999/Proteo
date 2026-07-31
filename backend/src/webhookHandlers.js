@@ -228,12 +228,16 @@ async function handleOrderInsert(data) {
     const headerPairsMap = new Map();
     for (const def of PS_FIELDS_CABECERA) {
       const erpCol = fieldMapCab[def.field];
-      if (!erpCol || !cabCols.includes(erpCol)) continue;
+      if (!erpCol) continue;
+      // Buscar el nombre real de la columna con la casing exacta de la BD para evitar duplicados por diferencias de mayúsculas/minúsculas
+      const realCol = cabCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+      if (!realCol) continue;
+
       let val = getPath(data, def.field);
       if (val === undefined) continue;
 
       // Conversión especial para Condicion_Pago (max 4 caracteres)
-      if (erpCol.toLowerCase() === 'condicion_pago' && typeof val === 'string') {
+      if (realCol.toLowerCase() === 'condicion_pago' && typeof val === 'string') {
         const upperVal = val.toUpperCase().trim();
         if (upperVal === 'CONTADO') {
           val = 'CONT';
@@ -241,21 +245,29 @@ async function handleOrderInsert(data) {
           val = 'CRE';
         }
       }
-      headerPairsMap.set(erpCol, val);
+      headerPairsMap.set(realCol, val);
     }
 
-    // Reglas de negocio para OrderType (Sucursal / ANEXO)
+    // Reglas de negocio para el Pedido (Estatus_Pedido y AfectarInventario)
     const orderTypeVal = typeof data.OrderType === 'string' ? data.OrderType.toUpperCase().trim() : '';
+    const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
+    const realAfectarCol = cabCols.find(c => c.toLowerCase() === 'afectarinventario');
+
     if (orderTypeVal.includes('ANEXO')) {
-      if (cabCols.includes('Estatus_Pedido')) {
-        headerPairsMap.set('Estatus_Pedido', 'P');
+      if (realEstatusCol) {
+        headerPairsMap.set(realEstatusCol, 'P');
       }
-      if (cabCols.includes('AfectarInventario')) {
-        headerPairsMap.set('AfectarInventario', 1);
+      if (realAfectarCol) {
+        headerPairsMap.set(realAfectarCol, 1);
       }
     } else if (orderTypeVal.includes('NORMAL') || orderTypeVal.includes('REMISION')) {
-      if (cabCols.includes('Estatus_Pedido')) {
-        headerPairsMap.set('Estatus_Pedido', 'P');
+      if (realEstatusCol) {
+        headerPairsMap.set(realEstatusCol, 'P');
+      }
+    } else {
+      // Caso por defecto / Otros tipos de pedido (abierto a futuros cambios de estatus)
+      if (realEstatusCol) {
+        headerPairsMap.set(realEstatusCol, 'P');
       }
     }
 
@@ -295,10 +307,14 @@ async function handleOrderInsert(data) {
         const rowPairsMap = new Map();
         for (const def of PS_FIELDS_DETALLE) {
           const erpCol = fieldMapDet[def.field];
-          if (!erpCol || !detCols.includes(erpCol)) continue;
+          if (!erpCol) continue;
+          // Buscar el nombre real de la columna con la casing exacta de la BD
+          const realCol = detCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+          if (!realCol) continue;
+
           const val = def.field === 'OrderNumber' ? orderNumber : item[def.field];
           if (val === undefined) continue;
-          rowPairsMap.set(erpCol, val);
+          rowPairsMap.set(realCol, val);
         }
         const rowPairs = Array.from(rowPairsMap.entries());
         if (rowPairs.length > 0) await insertRow(detTable, rowPairs);
