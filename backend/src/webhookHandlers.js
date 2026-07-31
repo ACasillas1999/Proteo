@@ -258,6 +258,16 @@ async function handleOrderInsert(data) {
         }
       }
 
+      // Truncar campos de clave de vendedor/atendió (max 6 caracteres)
+      if (['cve_atendio', 'cve_vendedor', 'cotizador', 'asesor'].includes(realCol.toLowerCase()) && val !== null && val !== undefined) {
+        val = String(val).substring(0, 6);
+      }
+
+      // Truncar No_OC (max 11 caracteres)
+      if (realCol.toLowerCase() === 'no_oc' && val !== null && val !== undefined) {
+        val = String(val).substring(0, 11);
+      }
+
       headerPairsMap.set(realCol, val);
     }
 
