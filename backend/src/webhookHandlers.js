@@ -253,7 +253,7 @@ async function handleOrderInsert(data) {
       if (cabCols.includes('AfectarInventario')) {
         headerPairsMap.set('AfectarInventario', 1);
       }
-    } else if (orderTypeVal.includes('SUCURSAL')) {
+    } else if (orderTypeVal.includes('NORMAL') || orderTypeVal.includes('REMISION')) {
       if (cabCols.includes('Estatus_Pedido')) {
         headerPairsMap.set('Estatus_Pedido', 'P');
       }
