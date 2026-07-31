@@ -245,6 +245,19 @@ async function handleOrderInsert(data) {
           val = 'CRE';
         }
       }
+
+      // Conversión especial para TipoPedido (max 1 carácter)
+      if (realCol.toLowerCase() === 'tipopedido' && typeof val === 'string') {
+        const upperVal = val.toUpperCase().trim();
+        if (upperVal === 'RECOGE' || upperVal === 'CLIENTE AVISA') {
+          val = 'M';
+        } else if (upperVal === 'ENVIA' || upperVal === 'ENVÍA') {
+          val = 'E';
+        } else {
+          val = val.substring(0, 1).toUpperCase();
+        }
+      }
+
       headerPairsMap.set(realCol, val);
     }
 
