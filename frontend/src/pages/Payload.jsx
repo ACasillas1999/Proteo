@@ -96,6 +96,7 @@ export default function Payload() {
           <option value="">Todas las entidades</option>
           <option value="articulo">articulo</option>
           <option value="cliente">cliente</option>
+          <option value="surtidopedido">surtidopedido</option>
           <option value="proveedor">proveedor</option>
         </select>
 
