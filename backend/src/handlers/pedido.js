@@ -33,7 +33,7 @@ const PS_FIELDS_CABECERA = [
   { field: 'details_promo.0.order.PurchaseOrderNumber', type: 'erpColumn', required: false, label: 'Orden de Compra (Anidado Promo)' },
   
   // Identificadores y datos anidados del Cliente
-  { field: 'CustomerId.CustomerNumber', type: 'erpColumn', required: false, label: 'Cliente — CustomerNumber (de tu ERP)' },
+  { field: 'CustomerId.CustomerNumber', type: 'erpColumn', required: false, label: 'Cliente — CustomerNumber (Busca por IdGlobal en clientes para insertar ID local en la columna seleccionada)' },
   { field: 'CustomerId.Name',           type: 'erpColumn', required: false, label: 'Cliente — Nombre' },
   { field: 'CustomerId.TIN',            type: 'erpColumn', required: false, label: 'Cliente — RFC / TIN' },
   { field: 'CustomerId.Address1',       type: 'erpColumn', required: false, label: 'Cliente — Dirección 1' },
@@ -47,7 +47,7 @@ const PS_FIELDS_CABECERA = [
   
   // Identificadores y datos anidados de la Ruta
   { field: 'RouteId.RouteNumber',       type: 'erpColumn', required: false, label: 'Ruta — RouteNumber (de tu ERP)' },
-  { field: 'RouteId.Name',              type: 'erpColumn', required: false, label: 'Ruta — Nombre' },
+  { field: 'RouteId.Name',              type: 'erpColumn', required: false, label: 'Ruta — Nombre (Busca por Usuario en vendedor con Tipo V/Y para insertar Cve_Vendedor en Cve_Atendio, Cve_Vendedor y Cotizador)' },
   { field: 'RouteId.Warehouse',         type: 'erpColumn', required: false, label: 'Ruta — Almacén' },
   { field: 'RouteId.Id',                type: 'erpColumn', required: false, label: 'Ruta — Id interno PowerSales' },
 ];

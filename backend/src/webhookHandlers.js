@@ -1,5 +1,5 @@
 'use strict';
-const { query }                      = require('./db');
+const { query, getPool }             = require('./db');
 const { PS_FIELDS: ARTICULO_FIELDS } = require('./handlers/articulo');
 const { PS_FIELDS: CLIENTE_FIELDS }  = require('./handlers/cliente');
 const { PS_FIELDS_CABECERA, PS_FIELDS_DETALLE } = require('./handlers/pedido');
@@ -294,28 +294,116 @@ async function handleOrderInsert(data) {
       }
     }
 
-    const headerPairs = Array.from(headerPairsMap.entries());
-
-    if (headerPairs.length === 0) {
-      await saveWebhookLog('orders', orderNumber, data, 2, 'Ningún campo de cabecera mapeado');
-      return;
+    // Buscar el ID local de Magic (Cliente) usando IdGlobal = CustomerNumber de PowerSales
+    const customerNumber = getPath(data, 'CustomerId.CustomerNumber');
+    if (customerNumber) {
+      try {
+        const [clientRows] = await query("SELECT Cliente FROM clientes WHERE IdGlobal = ? LIMIT 1", [customerNumber]);
+        if (clientRows.length > 0) {
+          const localClienteId = clientRows[0].Cliente;
+          const erpClientCol = fieldMapCab['CustomerId.CustomerNumber'] || fieldMapCab['CustomerId.Id'];
+          if (erpClientCol) {
+            const realClientCol = cabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase());
+            if (realClientCol) {
+              headerPairsMap.set(realClientCol, localClienteId);
+              console.log(`[WEBHOOK] Mapeado CustomerNumber ${customerNumber} a ID local Cliente ${localClienteId} en columna ${realClientCol}`);
+            }
+          }
+        }
+      } catch (cliErr) {
+        console.error(`[WEBHOOK] Error al buscar ID local de cliente:`, cliErr.message);
+      }
     }
 
-    const insertResult = await insertRow(cabTable, headerPairs);
-    console.log(`[WEBHOOK] Pedido ${orderNumber}: cabecera insertada en '${cabTable}'`);
-
-    // Si la tabla destino es cbpedvta y tenemos el insertId (auto_increment),
-    // actualizamos el consecutivo en ctrlcons para evitar desfases
-    if (cabTable.toLowerCase() === 'cbpedvta' && insertResult && insertResult.insertId) {
+    // Buscar el ID local de Vendedor usando Usuario = RouteId.Name de PowerSales
+    const routeName = getPath(data, 'RouteId.Name');
+    if (routeName) {
       try {
-        await query(
-          "UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'NPED'",
-          [insertResult.insertId]
+        const [vendedorRows] = await query(
+          "SELECT Cve_Vendedor FROM vendedor WHERE Usuario = ? AND TipoEmpleado IN ('V', 'Y') LIMIT 1",
+          [routeName]
         );
-        console.log(`[WEBHOOK] Consecutivo de pedido (Tipo = 'NPED') actualizado en ctrlcons a ${insertResult.insertId}`);
-      } catch (ctrlErr) {
-        console.error(`[WEBHOOK] Error al actualizar consecutivo en ctrlcons:`, ctrlErr.message);
+        if (vendedorRows.length > 0) {
+          const localVendedorId = vendedorRows[0].Cve_Vendedor;
+          
+          const realCveAtendioCol  = cabCols.find(c => c.toLowerCase() === 'cve_atendio');
+          const realCveVendedorCol = cabCols.find(c => c.toLowerCase() === 'cve_vendedor');
+          const realCotizadorCol   = cabCols.find(c => c.toLowerCase() === 'cotizador');
+
+          if (realCveAtendioCol) {
+            headerPairsMap.set(realCveAtendioCol, localVendedorId);
+          }
+          if (realCveVendedorCol) {
+            headerPairsMap.set(realCveVendedorCol, localVendedorId);
+          }
+          if (realCotizadorCol) {
+            headerPairsMap.set(realCotizadorCol, localVendedorId);
+          }
+          console.log(`[WEBHOOK] Mapeado RouteId.Name '${routeName}' a Cve_Vendedor local '${localVendedorId}'`);
+        }
+      } catch (vendErr) {
+        console.error(`[WEBHOOK] Error al buscar ID local de vendedor:`, vendErr.message);
       }
+    }
+
+    let nextFolio = null;
+    let insertResult = null;
+    
+    // Si la tabla es cbpedvta, iniciamos una transacción para leer y actualizar ctrlcons de manera segura
+    if (cabTable.toLowerCase() === 'cbpedvta') {
+      const pool = getPool();
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+
+        // 1. Obtener y bloquear el consecutivo actual para Tipo = 'NPED'
+        const [ctrlRows] = await connection.execute("SELECT Consec_Num FROM ctrlcons WHERE Tipo = 'NPED' FOR UPDATE");
+        if (ctrlRows.length === 0) {
+          throw new Error("No se encontró el tipo de consecutivo 'NPED' en la tabla ctrlcons.");
+        }
+
+        nextFolio = ctrlRows[0].Consec_Num + 1;
+
+        // 2. Insertar el folio generado en el mapeo con la casing exacta de la BD
+        const realPKCol = cabCols.find(c => c.toLowerCase() === 'no_pedido');
+        if (realPKCol) {
+          headerPairsMap.set(realPKCol, nextFolio);
+        }
+
+        const headerPairs = Array.from(headerPairsMap.entries());
+        if (headerPairs.length === 0) {
+          throw new Error('Ningún campo de cabecera mapeado');
+        }
+
+        // 3. Insertar la cabecera del pedido
+        const cols = headerPairs.map(([c]) => c);
+        const vals = headerPairs.map(([, v]) => v);
+        const placeholders = cols.map(() => '?').join(', ');
+        const colsSql = cols.map(c => `\`${c}\``).join(', ');
+
+        const [insertRes] = await connection.execute(`INSERT INTO \`${cabTable}\` (${colsSql}) VALUES (${placeholders})`, vals);
+        insertResult = insertRes;
+
+        // 4. Actualizar el consecutivo en ctrlcons
+        await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'NPED'", [nextFolio]);
+        console.log(`[WEBHOOK] Pedido insertado con Folio (No_Pedido): ${nextFolio} y consecutivo actualizado en ctrlcons.`);
+
+        await connection.commit();
+      } catch (txErr) {
+        await connection.rollback();
+        throw txErr;
+      } finally {
+        connection.release();
+      }
+    } else {
+      // Flujo genérico sin transacción (para otras tablas que sí sean autoincrementales)
+      const headerPairs = Array.from(headerPairsMap.entries());
+      if (headerPairs.length === 0) {
+        await saveWebhookLog('orders', orderNumber, data, 2, 'Ningún campo de cabecera mapeado');
+        return;
+      }
+      insertResult = await insertRow(cabTable, headerPairs);
+      console.log(`[WEBHOOK] Registro insertado en '${cabTable}'`);
     }
 
     const details = Array.isArray(data.details) ? data.details : [];
@@ -335,7 +423,7 @@ async function handleOrderInsert(data) {
           const realCol = detCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
           if (!realCol) continue;
 
-          const val = def.field === 'OrderNumber' ? orderNumber : item[def.field];
+          const val = def.field === 'OrderNumber' ? (nextFolio || orderNumber) : item[def.field];
           if (val === undefined) continue;
           rowPairsMap.set(realCol, val);
         }
