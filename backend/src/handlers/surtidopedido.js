@@ -47,10 +47,30 @@ async function sync(cambio) {
     statusId = 6;
   }
 
+  // 3.5 Intentar recuperar el OrderNumber original de PowerSales (como OrderNumberIPAD) para evitar el error 500 del API
+  let orderNumberIpad = String(clave_registro); // fallback: folio local
+  try {
+    const [logRows] = await query(
+      "SELECT datos FROM proteo_db.webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
+    );
+    for (const log of logRows) {
+      const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
+      if (datosJson && (datosJson.Id === Number(orderPsId) || String(datosJson.Id) === String(orderPsId))) {
+        if (datosJson.OrderNumber) {
+          orderNumberIpad = datosJson.OrderNumber;
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[SYNC surtidopedido] Error al buscar OrderNumber en logs:`, err.message);
+  }
+
   const payload = {
     Id: orderPsId,
     StatusId: statusId,
-    StatusName: status
+    StatusName: status,
+    OrderNumberIPAD: orderNumberIpad
   };
 
   console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro})`);
