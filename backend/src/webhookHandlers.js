@@ -414,14 +414,32 @@ async function handleOrderInsert(data) {
       }
       const detCols = await validColumns(detTable);
 
+      let partidaIndex = 1;
       for (const item of details) {
         const rowPairsMap = new Map();
+
+        // 1. Forzar la llave de relación con la cabecera (No_Pedido)
+        const realFKCol = detCols.find(c => c.toLowerCase() === 'no_pedido');
+        if (realFKCol && (nextFolio || (insertResult && insertResult.insertId))) {
+          rowPairsMap.set(realFKCol, nextFolio || insertResult.insertId);
+        }
+
+        // 2. Forzar/Autocompletar la columna 'Partida' (número de renglón) si existe
+        const realPartidaCol = detCols.find(c => c.toLowerCase() === 'partida');
+        if (realPartidaCol) {
+          rowPairsMap.set(realPartidaCol, partidaIndex++);
+        }
+
+        // 3. Procesar campos mapeados
         for (const def of PS_FIELDS_DETALLE) {
           const erpCol = fieldMapDet[def.field];
           if (!erpCol) continue;
           // Buscar el nombre real de la columna con la casing exacta de la BD
           const realCol = detCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
           if (!realCol) continue;
+
+          // Si es la columna FK o Partida y ya la agregamos, la omitimos aquí
+          if (realCol === realFKCol || realCol === realPartidaCol) continue;
 
           const val = def.field === 'OrderNumber' ? (nextFolio || orderNumber) : item[def.field];
           if (val === undefined) continue;
