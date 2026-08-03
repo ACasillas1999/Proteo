@@ -13,6 +13,7 @@
 // Nivel raíz de `datos` en el webhook de orden (ver routes/webhooks.js, entidad 'orders')
 const PS_FIELDS_CABECERA = [
   { field: 'OrderNumber',       type: 'erpColumn', required: true,  label: 'Folio del pedido' },
+  { field: 'Id',                type: 'erpColumn', required: false, label: 'ID interno de PowerSales del Pedido (Id)' },
   { field: 'OrderDate',         type: 'erpColumn', required: false, label: 'Fecha de pedido' },
   { field: 'DeliveryDate',      type: 'erpColumn', required: false, label: 'Fecha de entrega' },
   { field: 'DeliveryDateReal',  type: 'erpColumn', required: false, label: 'Fecha de entrega real' },

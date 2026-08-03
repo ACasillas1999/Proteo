@@ -49,7 +49,7 @@ const payload = JSON.stringify({
     },
     RouteId: {
       Id: 2,
-      Name: "VICENTE", // Debe existir en la tabla vendedor (columna Usuario = VICENTE)
+      Name: "MARY", // Debe existir en la tabla vendedor (columna Usuario = MARY)
       Warehouse: "1"
     },
     RepId: {
