@@ -7,14 +7,21 @@ const { authenticateWebhook } = require('../src/authMiddleware');
 // POST /api/branches/heartbeat — cada sucursal reporta su estado
 router.post('/heartbeat', authenticateWebhook, async (req, res) => {
   try {
-    const { branch_id, last_poll_id, erp_connected, version, hostname } = req.body;
+    const { 
+      branch_id, last_poll_id, erp_connected, version, hostname,
+      sync_ok, sync_error, webhook_ok, webhook_error 
+    } = req.body;
     if (!branch_id) return res.status(400).json({ error: 'branch_id required' });
 
     await upsertBranchStatus(branch_id, {
-      lastPollId:   last_poll_id,
-      erpConnected: erp_connected,
+      lastPollId:        last_poll_id,
+      erpConnected:      erp_connected,
       version,
       hostname,
+      syncOkToday:       sync_ok || 0,
+      syncErrorToday:    sync_error || 0,
+      webhookOkToday:    webhook_ok || 0,
+      webhookErrorToday: webhook_error || 0,
     });
 
     broadcast('branch_heartbeat', {
@@ -22,7 +29,11 @@ router.post('/heartbeat', authenticateWebhook, async (req, res) => {
       last_poll_id,
       erp_connected,
       hostname,
-      last_seen_at: new Date().toISOString(),
+      sync_ok:       sync_ok || 0,
+      sync_error:    sync_error || 0,
+      webhook_ok:    webhook_ok || 0,
+      webhook_error: webhook_error || 0,
+      last_seen_at:  new Date().toISOString(),
     });
 
     res.json({ ok: true });

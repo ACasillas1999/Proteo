@@ -136,12 +136,14 @@ export default function Payload() {
                 {rows.map(r => {
                   const est = ESTADO_MAP[r.estado] || ESTADO_MAP[0];
                   const hasPayload = !!r.datos;
+                  const hasError = !!r.error_msg;
+                  const canView = hasPayload || hasError;
                   return (
                     <tr
                       key={r.id}
-                      className={hasPayload ? 'clickable' : ''}
-                      onClick={() => hasPayload && setModal(r)}
-                      title={hasPayload ? 'Click para ver payload' : ''}
+                      className={canView ? 'clickable' : ''}
+                      onClick={() => canView && setModal(r)}
+                      title={canView ? 'Click para ver detalles' : ''}
                     >
                       <td style={{ color: 'var(--text-muted)' }}>#{r.id}</td>
                       <td><span className="badge badge--cyan">{r.entidad}</span></td>
@@ -154,11 +156,11 @@ export default function Payload() {
                       </td>
                       <td style={{ color: 'var(--text-muted)' }}>{fmtDate(r.fecha_sync)}</td>
                       <td>
-                        {hasPayload ? (
+                        {canView ? (
                           <button
                             className="btn btn--ghost btn--sm"
                             onClick={e => { e.stopPropagation(); setModal(r); }}
-                            title="Ver JSON enviado"
+                            title={hasError ? "Ver error y JSON" : "Ver JSON enviado"}
                           >
                             🔍 Ver
                           </button>

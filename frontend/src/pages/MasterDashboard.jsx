@@ -58,7 +58,7 @@ export default function MasterDashboard({ wsEvents = [] }) {
       setFeed(prev => [{
         ts:    new Date().toISOString(),
         label: `Branch ${last.branch_id}`,
-        msg:   `Heartbeat — ERP: ${last.erp_connected ? '✓' : '✗'} · Poll ID: ${last.last_poll_id ?? '—'}`,
+        msg:   `Heartbeat — ERP: ${last.erp_connected ? '✓' : '✗'} · Poll ID: ${last.last_poll_id ?? '—'} · Sync Hoy: OK: ${last.sync_ok}/Err: ${last.sync_error} · Webhook: OK: ${last.webhook_ok}/Err: ${last.webhook_error}`,
         ok:    last.erp_connected,
       }, ...prev].slice(0, 150));
       loadDigest();
@@ -128,6 +128,8 @@ export default function MasterDashboard({ wsEvents = [] }) {
                   <th style={{ padding: '6px 10px' }}>ERP</th>
                   <th style={{ padding: '6px 10px' }}>Último pull</th>
                   <th style={{ padding: '6px 10px' }}>Pendientes</th>
+                  <th style={{ padding: '6px 10px' }}>Sync Hoy (OK / Err)</th>
+                  <th style={{ padding: '6px 10px' }}>Webhooks Hoy (OK / Err)</th>
                   <th style={{ padding: '6px 10px' }}>Heartbeat</th>
                 </tr>
               </thead>
@@ -157,6 +159,16 @@ export default function MasterDashboard({ wsEvents = [] }) {
                       ) : (
                         <span style={{ color: '#34d399' }}>0</span>
                       )}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ color: '#34d399', fontWeight: 700 }}>{b.sync_ok_today ?? 0}</span>
+                      <span style={{ color: '#9ca3af' }}> / </span>
+                      <span style={{ color: (b.sync_error_today ?? 0) > 0 ? '#f87171' : '#9ca3af', fontWeight: (b.sync_error_today ?? 0) > 0 ? 700 : 400 }}>{b.sync_error_today ?? 0}</span>
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ color: '#34d399', fontWeight: 700 }}>{b.webhook_ok_today ?? 0}</span>
+                      <span style={{ color: '#9ca3af' }}> / </span>
+                      <span style={{ color: (b.webhook_error_today ?? 0) > 0 ? '#f87171' : '#9ca3af', fontWeight: (b.webhook_error_today ?? 0) > 0 ? 700 : 400 }}>{b.webhook_error_today ?? 0}</span>
                     </td>
                     <td style={{ padding: '8px 10px', color: '#9ca3af', fontSize: 12 }}>{timeSince(b.last_seen_at)}</td>
                   </tr>

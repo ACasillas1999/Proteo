@@ -102,16 +102,37 @@ async function migrate() {
     try { await conn.query(`ALTER TABLE webhook_logs ADD COLUMN branch_id INT DEFAULT NULL`); } catch {}
     try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_branch (branch_id)`); } catch {}
     try { await conn.query(`ALTER TABLE sync_history ADD COLUMN latency_ms INT DEFAULT NULL`); } catch {}
+    
+    // Asegurar columnas de resumen en branch_status
+    try { await conn.query(`ALTER TABLE branch_status ADD COLUMN sync_ok_today INT DEFAULT 0`); } catch {}
+    try { await conn.query(`ALTER TABLE branch_status ADD COLUMN sync_error_today INT DEFAULT 0`); } catch {}
+    try { await conn.query(`ALTER TABLE branch_status ADD COLUMN webhook_ok_today INT DEFAULT 0`); } catch {}
+    try { await conn.query(`ALTER TABLE branch_status ADD COLUMN webhook_error_today INT DEFAULT 0`); } catch {}
+    
+    // Asegurar índices de búsqueda para rendimiento de paginación/filtros
+    try { await conn.query(`ALTER TABLE sync_history ADD INDEX idx_entidad (entidad)`); } catch {}
+    try { await conn.query(`ALTER TABLE sync_history ADD INDEX idx_estado (estado)`); } catch {}
+    try { await conn.query(`ALTER TABLE sync_history ADD INDEX idx_clave (clave_registro)`); } catch {}
+    try { await conn.query(`ALTER TABLE sync_history ADD INDEX idx_fecha (fecha_sync)`); } catch {}
+    
+    try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_entidad (entidad)`); } catch {}
+    try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_estado (estado)`); } catch {}
+    try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_clave (clave_registro)`); } catch {}
+    try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_fecha (fecha_recepcion)`); } catch {}
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS branch_status (
-        branch_id     INT          NOT NULL PRIMARY KEY,
-        last_seen_at  DATETIME     NOT NULL,
-        last_poll_id  INT          DEFAULT 0,
-        erp_connected TINYINT(1)   DEFAULT 0,
-        app_version   VARCHAR(50)  DEFAULT NULL,
-        hostname      VARCHAR(100) DEFAULT NULL,
-        updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        branch_id           INT          NOT NULL PRIMARY KEY,
+        last_seen_at        DATETIME     NOT NULL,
+        last_poll_id        INT          DEFAULT 0,
+        erp_connected       TINYINT(1)   DEFAULT 0,
+        app_version         VARCHAR(50)  DEFAULT NULL,
+        hostname            VARCHAR(100) DEFAULT NULL,
+        sync_ok_today       INT          DEFAULT 0,
+        sync_error_today    INT          DEFAULT 0,
+        webhook_ok_today    INT          DEFAULT 0,
+        webhook_error_today INT          DEFAULT 0,
+        updated_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -280,18 +301,66 @@ async function saveOverrideMapping(branchId, entity, mappings) {
 
 // ── Branch status (heartbeat) ────────────────────────────────────────────────
 
-async function upsertBranchStatus(branchId, { lastPollId = 0, erpConnected = 0, version = null, hostname = null } = {}) {
+async function upsertBranchStatus(branchId, { 
+  lastPollId = 0, 
+  erpConnected = 0, 
+  version = null, 
+  hostname = null,
+  syncOkToday = 0,
+  syncErrorToday = 0,
+  webhookOkToday = 0,
+  webhookErrorToday = 0
+} = {}) {
   await localQuery(
-    `INSERT INTO branch_status (branch_id, last_seen_at, last_poll_id, erp_connected, app_version, hostname)
-     VALUES (?, NOW(), ?, ?, ?, ?)
+    `INSERT INTO branch_status (
+       branch_id, last_seen_at, last_poll_id, erp_connected, app_version, hostname,
+       sync_ok_today, sync_error_today, webhook_ok_today, webhook_error_today
+     )
+     VALUES (?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       last_seen_at  = NOW(),
-       last_poll_id  = VALUES(last_poll_id),
-       erp_connected = VALUES(erp_connected),
-       app_version   = VALUES(app_version),
-       hostname      = VALUES(hostname)`,
-    [branchId, lastPollId, erpConnected ? 1 : 0, version, hostname]
+       last_seen_at        = NOW(),
+       last_poll_id        = VALUES(last_poll_id),
+       erp_connected       = VALUES(erp_connected),
+       app_version         = VALUES(app_version),
+       hostname            = VALUES(hostname),
+       sync_ok_today       = VALUES(sync_ok_today),
+       sync_error_today    = VALUES(sync_error_today),
+       webhook_ok_today    = VALUES(webhook_ok_today),
+       webhook_error_today = VALUES(webhook_error_today)`,
+    [
+      branchId, lastPollId, erpConnected ? 1 : 0, version, hostname,
+      syncOkToday, syncErrorToday, webhookOkToday, webhookErrorToday
+    ]
   );
+}
+
+/**
+ * Obtiene el resumen de sincronización de payloads y webhooks del día de hoy
+ * en la sucursal local.
+ */
+async function getLocalSyncSummary() {
+  const [syncRows] = await localQuery(`
+    SELECT 
+      SUM(CASE WHEN estado = 1 THEN 1 ELSE 0 END) AS ok,
+      SUM(CASE WHEN estado = 2 THEN 1 ELSE 0 END) AS error
+    FROM sync_history
+    WHERE DATE(fecha_sync) = CURDATE()
+  `);
+  
+  const [webhookRows] = await localQuery(`
+    SELECT 
+      SUM(CASE WHEN estado = 1 THEN 1 ELSE 0 END) AS ok,
+      SUM(CASE WHEN estado = 2 THEN 1 ELSE 0 END) AS error
+    FROM webhook_logs
+    WHERE DATE(fecha_recepcion) = CURDATE()
+  `);
+
+  return {
+    sync_ok: Number(syncRows[0]?.ok || 0),
+    sync_error: Number(syncRows[0]?.error || 0),
+    webhook_ok: Number(webhookRows[0]?.ok || 0),
+    webhook_error: Number(webhookRows[0]?.error || 0)
+  };
 }
 
 async function getAllBranchStatuses() {
@@ -306,4 +375,5 @@ module.exports = {
   getMappingForBranch, saveOverrideMapping,
   saveSyncHistory, saveWebhookLog,
   upsertBranchStatus, getAllBranchStatuses,
+  getLocalSyncSummary,
 };

@@ -2,7 +2,7 @@
 const os    = require('os');
 const axios = require('axios');
 const { query }                             = require('./db');
-const { getConfig, setConfig, saveWebhookLog, saveFieldMapping } = require('./localdb');
+const { getConfig, setConfig, saveWebhookLog, saveFieldMapping, getLocalSyncSummary } = require('./localdb');
 const { handleProductUpdate, handleCustomerUpdate, handleOrderInsert } = require('./webhookHandlers');
 const { broadcast }                         = require('./websocket');
 
@@ -68,12 +68,18 @@ async function sendHeartbeat(lastPollId) {
   let erpConnected = 0;
   try { await query('SELECT 1'); erpConnected = 1; } catch {}
 
+  const summary = await getLocalSyncSummary().catch(() => ({ sync_ok: 0, sync_error: 0, webhook_ok: 0, webhook_error: 0 }));
+
   await axios.post(`${centralUrl}/api/branches/heartbeat`, {
     branch_id:     branchId,
     last_poll_id:  lastPollId ?? 0,
     erp_connected: erpConnected,
     version:       process.env.npm_package_version || '1.0',
     hostname:      os.hostname(),
+    sync_ok:       summary.sync_ok,
+    sync_error:    summary.sync_error,
+    webhook_ok:    summary.webhook_ok,
+    webhook_error: summary.webhook_error,
   }, {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 5_000,
