@@ -1,7 +1,7 @@
 'use strict';
 const { query } = require('../db');
 const ps = require('../powersales');
-const { getFieldMapping, getConfig } = require('../localdb');
+const { getFieldMapping, getConfig, localQuery } = require('../localdb');
 
 async function sync(cambio) {
   const { clave_registro, campos_modificados } = cambio;
@@ -50,8 +50,8 @@ async function sync(cambio) {
   // 3.5 Intentar recuperar el OrderNumber original de PowerSales (como OrderNumberIPAD) para evitar el error 500 del API
   let orderNumberIpad = String(clave_registro); // fallback: folio local
   try {
-    const [logRows] = await query(
-      "SELECT datos FROM proteo_db.webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
+    const [logRows] = await localQuery(
+      "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
     );
     for (const log of logRows) {
       const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
