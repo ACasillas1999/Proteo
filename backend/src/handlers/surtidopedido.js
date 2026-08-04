@@ -47,8 +47,9 @@ async function sync(cambio) {
     statusId = 6;
   }
 
-  // 3.5 Intentar recuperar el OrderNumber original de PowerSales (como OrderNumberIPAD) para evitar el error 500 del API
+  // 3.5 Intentar recuperar el OrderNumber original y el ID de Vendedor de PowerSales
   let orderNumberIpad = String(clave_registro); // fallback: folio local
+  let employeeId = 3; // fallback por defecto
   try {
     const [logRows] = await localQuery(
       "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
@@ -60,29 +61,40 @@ async function sync(cambio) {
       // Intentar extraer del objeto anidado 'order' o de la raíz del JSON
       const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
       const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
+      const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
 
       if (orderId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId))) {
         if (orderNum) {
           orderNumberIpad = orderNum;
-          break;
         }
+        if (repObj && repObj.Id) {
+          employeeId = Number(repObj.Id);
+        }
+        break;
       }
     }
   } catch (err) {
-    console.error(`[SYNC surtidopedido] Error al buscar OrderNumber en logs:`, err.message);
+    console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
   }
 
+  const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const payload = {
     Id: orderPsId,
     StatusId: statusId,
     StatusName: status,
-    OrderNumberIPAD: orderNumberIpad
+    OrderNumberIPAD: orderNumberIpad,
+    IDPedidoEnc: orderPsId,
+    Employee: employeeId,
+    ExternalReference: orderNumberIpad,
+    ModifiedDate: nowStr,
+    OrdersDetails: []
   };
 
   console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro})`);
   
   // PowerSales: POST /orders con el payload de actualización de estatus de surtido
-  await ps.post('/orders', { data: [payload] });
+  // Nota: El API espera 'data' como un objeto único, no como un arreglo.
+  await ps.post('/orders', { data: payload });
 
   return payload;
 }
