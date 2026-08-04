@@ -55,9 +55,15 @@ async function sync(cambio) {
     );
     for (const log of logRows) {
       const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
-      if (datosJson && (datosJson.Id === Number(orderPsId) || String(datosJson.Id) === String(orderPsId))) {
-        if (datosJson.OrderNumber) {
-          orderNumberIpad = datosJson.OrderNumber;
+      if (!datosJson) continue;
+
+      // Intentar extraer del objeto anidado 'order' o de la raíz del JSON
+      const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
+      const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
+
+      if (orderId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId))) {
+        if (orderNum) {
+          orderNumberIpad = orderNum;
           break;
         }
       }
