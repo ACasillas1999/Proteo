@@ -1,22 +1,31 @@
-// Script para probar el sincronizador surtidopedido.js con el pedido local 554654
+// Script para probar el sincronizador con el pedido 554657
 require('dotenv').config();
 const surtidopedido = require('./src/handlers/surtidopedido');
+const ps = require('./src/powersales');
 
 (async () => {
   try {
-    console.log('=== Iniciando prueba de sincronización de surtido de pedido ===');
+    console.log('=== Iniciando prueba con Pedido 554657 (PS ID: 117) ===');
     const cambio = {
-      clave_registro: '554654', // Folio del pedido en cbpedvta
-      campos_modificados: 'FULLY_PICKED' // Nuevo estatus
+      clave_registro: '554657', // Folio 117
+      campos_modificados: 'FULLY_PICKED'
     };
 
-    console.log('Ejecutando surtidopedido.sync()...');
     const payload = await surtidopedido.sync(cambio);
-    console.log('\n=== PAYLOAD ENVIADO EXITOSAMENTE ===');
+    
+    // Cast a enteros por seguridad
+    payload.Id = Number(payload.Id);
+    payload.IDPedidoEnc = Number(payload.IDPedidoEnc);
+    
+    console.log('\n=== PAYLOAD ENVIADO ===');
     console.log(JSON.stringify(payload, null, 2));
 
+    const response = await ps.post('/orders', { data: payload });
+    console.log('\n=== RESPUESTA DEL SERVIDOR DE POWERSALES ===');
+    console.log(JSON.stringify(response.data, null, 2));
+
   } catch (err) {
-    console.error('\n❌ ERROR EN LA SINCRONIZACIÓN:', err);
+    console.error('\n❌ ERROR:', err);
   } finally {
     process.exit(0);
   }
