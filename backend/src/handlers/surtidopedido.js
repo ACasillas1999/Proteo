@@ -151,7 +151,14 @@ async function sync(cambio) {
   
   // PowerSales: POST /orders con el payload de actualización de estatus de surtido
   // Nota: El API espera 'data' como un objeto único, no como un arreglo.
-  await ps.post('/orders', { data: payload });
+  const response = await ps.post('/orders', { data: payload });
+
+  if (response && response.data) {
+    const resData = response.data;
+    if (resData.error === 1 || resData.ok === 0 || (Array.isArray(resData.noInsert) && resData.noInsert.length > 0)) {
+      throw new Error(`Rechazado por PowerSales (error interno): ${JSON.stringify(resData)}`);
+    }
+  }
 
   return payload;
 }
