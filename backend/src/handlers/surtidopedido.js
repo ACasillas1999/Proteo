@@ -47,9 +47,10 @@ async function sync(cambio) {
     statusId = 6;
   }
 
-  // 3.5 Intentar recuperar el OrderNumber original y el ID de Vendedor de PowerSales
+  // 3.5 Intentar recuperar el OrderNumber original, el ID de Vendedor y las partidas originales de PowerSales
   let orderNumberIpad = String(clave_registro); // fallback: folio local
   let employeeId = 3; // fallback por defecto
+  let originalDetails = [];
   try {
     const [logRows] = await localQuery(
       "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
@@ -62,6 +63,7 @@ async function sync(cambio) {
       const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
       const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
       const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
+      const details = datosJson.order ? datosJson.order.details : datosJson.details;
 
       if (orderId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId))) {
         if (orderNum) {
@@ -70,11 +72,66 @@ async function sync(cambio) {
         if (repObj && repObj.Id) {
           employeeId = Number(repObj.Id);
         }
+        if (Array.isArray(details)) {
+          originalDetails = details;
+        }
         break;
       }
     }
   } catch (err) {
     console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
+  }
+
+  // 4. Obtener las partidas del pedido desde la tabla de detalles del ERP (dtpedvta)
+  const detTable = await getConfig('pedido_detalle_table', 'dtpedvta');
+  const fieldMapDet = await getFieldMapping('pedido_detalle');
+
+  const skuCol = fieldMapDet['ProductId'] || 'Cve_Articulo';
+  const qtyCol = fieldMapDet['QtyOrdered'] || 'Cant_Pedida';
+  const priceCol = fieldMapDet['Price'] || 'Costo_Unitario';
+
+  const [itemRows] = await query(
+    `SELECT * FROM \`${detTable}\` WHERE No_Pedido = ?`,
+    [clave_registro]
+  );
+
+  const ordersDetails = [];
+  for (const row of itemRows) {
+    const sku = row[skuCol];
+    if (!sku) continue;
+
+    // Buscar la partida correspondiente en el webhook original para preservar IDs
+    const origItem = originalDetails.find(d => 
+      String(d.ProductId).trim() === String(sku).trim() || 
+      String(d.ProductCode).trim() === String(sku).trim()
+    );
+
+    const qtyOrdered = Number(row[qtyCol] || 0);
+    const qtyDelivered = Number(row.Cant_Facturada || 0);
+
+    // Si está FULLY_PICKED surtimos todo lo pedido. Si es parcial, lo que está facturado (o fallback a lo pedido si está vacío)
+    let qtyPicked = status === 'FULLY_PICKED' ? qtyOrdered : qtyDelivered;
+    if (qtyPicked === 0) {
+      qtyPicked = qtyOrdered;
+    }
+
+    const price = Number(row[priceCol] || 0);
+    const subTotal = qtyOrdered * price;
+    const total = qtyOrdered * price;
+
+    ordersDetails.push({
+      Id: origItem ? origItem.Id : null,
+      ProductId: String(sku).trim(),
+      ProductCode: String(sku).trim(),
+      QtyOrdered: qtyOrdered.toFixed(2),
+      QtyDelivered: qtyDelivered.toFixed(2),
+      QtyPicked: qtyPicked.toFixed(2),
+      Price: price.toFixed(2),
+      SubTotalAmount: subTotal.toFixed(2),
+      TotalAmount: total.toFixed(2),
+      UniqueId: origItem ? origItem.UniqueId : `UUID-${orderPsId}-${sku}`,
+      WarehouseId: origItem ? String(origItem.WarehouseId) : "1"
+    });
   }
 
   const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -87,10 +144,10 @@ async function sync(cambio) {
     Employee: employeeId,
     ExternalReference: orderNumberIpad,
     ModifiedDate: nowStr,
-    OrdersDetails: []
+    OrdersDetails: ordersDetails
   };
 
-  console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro})`);
+  console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) con ${ordersDetails.length} artículos para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro})`);
   
   // PowerSales: POST /orders con el payload de actualización de estatus de surtido
   // Nota: El API espera 'data' como un objeto único, no como un arreglo.
