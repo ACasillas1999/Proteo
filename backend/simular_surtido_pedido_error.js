@@ -18,16 +18,19 @@ const basePath = urlObj.pathname + '/orders';
 const TIPO_PRUEBA = 1; 
 
 // Pedido real para la prueba (debe existir en la base de datos de PowerSales)
-const orderId = 110; 
-const orderNumberIpad = 'VIC00000098W'; 
+const orderId = 114; 
+const orderNumberIpad = 'VIC00000102W'; 
 
-let productVal;
+let productVal1, productVal2;
 if (TIPO_PRUEBA === 1) {
-  productVal = "1020632"; // String SKU
+  productVal1 = "1020625"; 
+  productVal2 = "1020632";
 } else if (TIPO_PRUEBA === 2) {
-  productVal = 316; // Entero ID interno
+  productVal1 = 315; 
+  productVal2 = 316;
 } else if (TIPO_PRUEBA === 3) {
-  productVal = { Id: 316 }; // Objeto
+  productVal1 = { Id: 315 }; 
+  productVal2 = { Id: 316 };
 }
 
 const payload = {
@@ -41,8 +44,21 @@ const payload = {
   ModifiedDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
   OrdersDetails: TIPO_PRUEBA === 4 ? [] : [
     {
-      "Id": 133, // ID del detalle original
-      "ProductId": productVal,
+      "Id": 138,
+      "ProductId": productVal1,
+      "ProductCode": "1020625",
+      "QtyOrdered": "2.00",
+      "QtyDelivered": "0.00",
+      "QtyPicked": "2.00",
+      "Price": "79.64",
+      "SubTotalAmount": "159.28",
+      "TotalAmount": "159.28",
+      "UniqueId": "11442332026-08-05 10:16:06",
+      "WarehouseId": "1"
+    },
+    {
+      "Id": 137,
+      "ProductId": productVal2,
       "ProductCode": "1020632",
       "QtyOrdered": "1.00",
       "QtyDelivered": "0.00",
@@ -50,7 +66,7 @@ const payload = {
       "Price": "99.16",
       "SubTotalAmount": "99.16",
       "TotalAmount": "99.16",
-      "UniqueId": "11042332026-08-03 17:22:42",
+      "UniqueId": "11442332026-08-05 10:16:06",
       "WarehouseId": "1"
     }
   ]
