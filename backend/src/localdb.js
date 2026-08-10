@@ -149,6 +149,13 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Seed default tables for cotizaciones
+    await conn.query(`
+      INSERT IGNORE INTO app_config (\`key\`, \`config_value\`)
+      VALUES ('cotizacion_cabecera_table', 'cbcot'),
+             ('cotizacion_detalle_table', 'dtcot')
+    `);
+
     console.log('[LocalDB] ✓ Tablas verificadas en proteo_db');
   } finally {
     conn.release();

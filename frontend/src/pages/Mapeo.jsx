@@ -25,11 +25,21 @@ export default function Mapeo() {
   const [fieldsAlm, setFieldsAlm] = useState({ psFields: [], erpColumns: [], dbConnected: true });
   const [fieldsCli, setFieldsCli] = useState({ psFields: [], erpColumns: [], dbConnected: true });
 
-  // Pedido: la tabla ERP destino no está fija, el usuario la elige.
-  const [pedPsFields, setPedPsFields] = useState({ pedido_cabecera: [], pedido_detalle: [] });
+  // Pedido y Cotización: la tabla ERP destino no está fija, el usuario la elige.
+  const [pedPsFields, setPedPsFields] = useState({
+    pedido_cabecera: [],
+    pedido_detalle: [],
+    cotizacion_cabecera: [],
+    cotizacion_detalle: [],
+  });
   const [tables,      setTables]      = useState([]);
   const [tablesOk,    setTablesOk]    = useState(true);
-  const [pedidoCols,  setPedidoCols]  = useState({ pedido_cabecera: [], pedido_detalle: [] });
+  const [pedidoCols,  setPedidoCols]  = useState({
+    pedido_cabecera: [],
+    pedido_detalle: [],
+    cotizacion_cabecera: [],
+    cotizacion_detalle: [],
+  });
 
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState(false);
@@ -99,6 +109,8 @@ export default function Mapeo() {
 
       const pedCabTable = m.data.data?.pedido_cabecera?.table ?? '';
       const pedDetTable  = m.data.data?.pedido_detalle?.table ?? '';
+      const cotCabTable = m.data.data?.cotizacion_cabecera?.table ?? '';
+      const cotDetTable  = m.data.data?.cotizacion_detalle?.table ?? '';
 
       setMapeo({
         ...m.data.data,
@@ -107,6 +119,8 @@ export default function Mapeo() {
         cliente: { ...m.data.data?.cliente, fieldMap: cliData.initialFieldMap },
         pedido_cabecera: { fieldMap: m.data.data?.pedido_cabecera?.fieldMap ?? {}, table: pedCabTable },
         pedido_detalle: { fieldMap: m.data.data?.pedido_detalle?.fieldMap ?? {}, table: pedDetTable },
+        cotizacion_cabecera: { fieldMap: m.data.data?.cotizacion_cabecera?.fieldMap ?? {}, table: cotCabTable },
+        cotizacion_detalle: { fieldMap: m.data.data?.cotizacion_detalle?.fieldMap ?? {}, table: cotDetTable },
       });
 
       setFieldsArt({ psFields: artData.psFields, erpColumns: artData.erpColumns, dbConnected: artData.dbConnected });
@@ -116,6 +130,8 @@ export default function Mapeo() {
       setPedPsFields({
         pedido_cabecera: fPedCab.data.psFields ?? [],
         pedido_detalle: fPedDet.data.psFields ?? [],
+        cotizacion_cabecera: fPedCab.data.psFields ?? [],
+        cotizacion_detalle: fPedDet.data.psFields ?? [],
       });
       setTables(tablesRes.data.tables ?? []);
       setTablesOk(tablesRes.data.ok !== false);
@@ -130,6 +146,16 @@ export default function Mapeo() {
       if (pedDetTable) colFetches.push(
         axios.get(`/api/mapeo/columns/${encodeURIComponent(pedDetTable)}`)
           .then(r => setPedidoCols(p => ({ ...p, pedido_detalle: r.data.columns ?? [] })))
+          .catch(() => {})
+      );
+      if (cotCabTable) colFetches.push(
+        axios.get(`/api/mapeo/columns/${encodeURIComponent(cotCabTable)}`)
+          .then(r => setPedidoCols(p => ({ ...p, cotizacion_cabecera: r.data.columns ?? [] })))
+          .catch(() => {})
+      );
+      if (cotDetTable) colFetches.push(
+        axios.get(`/api/mapeo/columns/${encodeURIComponent(cotDetTable)}`)
+          .then(r => setPedidoCols(p => ({ ...p, cotizacion_detalle: r.data.columns ?? [] })))
           .catch(() => {})
       );
       Promise.all(colFetches);
@@ -169,12 +195,26 @@ export default function Mapeo() {
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
   // Resolve which data/fields to show based on active tab
-  const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle';
-  const entityForTab = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente', pedido_cabecera: 'pedido_cabecera', pedido_detalle: 'pedido_detalle' };
+  const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle' || activeTab === 'cotizacion_cabecera' || activeTab === 'cotizacion_detalle';
+  const entityForTab = {
+    articulo: 'articulo',
+    pricelists: 'articulo',
+    articuloalm: 'articuloalm',
+    cliente: 'cliente',
+    pedido_cabecera: 'pedido_cabecera',
+    pedido_detalle: 'pedido_detalle',
+    cotizacion_cabecera: 'cotizacion_cabecera',
+    cotizacion_detalle: 'cotizacion_detalle'
+  };
   const fieldsForTab = {
-    articulo: fieldsArt, pricelists: fieldsArt, articuloalm: fieldsAlm, cliente: fieldsCli,
+    articulo: fieldsArt,
+    pricelists: fieldsArt,
+    articuloalm: fieldsAlm,
+    cliente: fieldsCli,
     pedido_cabecera: { psFields: pedPsFields.pedido_cabecera, erpColumns: pedidoCols.pedido_cabecera, dbConnected: tablesOk },
     pedido_detalle: { psFields: pedPsFields.pedido_detalle, erpColumns: pedidoCols.pedido_detalle, dbConnected: tablesOk },
+    cotizacion_cabecera: { psFields: pedPsFields.cotizacion_cabecera, erpColumns: pedidoCols.cotizacion_cabecera, dbConnected: tablesOk },
+    cotizacion_detalle: { psFields: pedPsFields.cotizacion_detalle, erpColumns: pedidoCols.cotizacion_detalle, dbConnected: tablesOk },
   };
   const currentData = mapeo[entityForTab[activeTab] ?? 'articulo'];
   const currentFields = fieldsForTab[activeTab] ?? fieldsArt;
@@ -313,6 +353,16 @@ export default function Mapeo() {
             onClick={() => { setActiveTab('pedido_detalle'); setFilter(''); }}>
             📑 Pedido (Renglones)
           </button>
+          <button 
+            className={`btn ${activeTab === 'cotizacion_cabecera' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('cotizacion_cabecera'); setFilter(''); }}>
+            📄 Cotización (Cabecera)
+          </button>
+          <button 
+            className={`btn ${activeTab === 'cotizacion_detalle' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('cotizacion_detalle'); setFilter(''); }}>
+            📝 Cotización (Renglones)
+          </button>
         </div>
 
         {/* Selector de tabla ERP — solo pestañas de pedido, la tabla no está fija */}
@@ -368,7 +418,7 @@ export default function Mapeo() {
 
                 // Vista read-only de sucursal seleccionada
                 if (selectedBranch !== null) {
-                  const entityKey = { articulo: 'articulo', pricelists: 'articulo', articuloalm: 'articuloalm', cliente: 'cliente' }[activeTab];
+                  const entityKey = entityForTab[activeTab] || 'articulo';
                   const effectiveVal = branchMapeo?.[entityKey]?.[field];
                   const globalVal    = fieldMap[field];
                   const isOverride   = effectiveVal !== undefined && String(effectiveVal) !== String(globalVal ?? '');

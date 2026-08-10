@@ -15,6 +15,8 @@ router.get('/', async (_req, res) => {
     const fieldMapCli       = await getFieldMapping('cliente');
     const fieldMapPedCab    = await getFieldMapping('pedido_cabecera');
     const fieldMapPedDet    = await getFieldMapping('pedido_detalle');
+    const fieldMapCotCab    = await getFieldMapping('cotizacion_cabecera');
+    const fieldMapCotDet    = await getFieldMapping('cotizacion_detalle');
     const categories        = await getConfig('articulo_categories', {
       MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
       HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
@@ -22,6 +24,8 @@ router.get('/', async (_req, res) => {
     const defaultCategoryId = await getConfig('articulo_defaultCategoryId', 1);
     const pedidoCabeceraTable = await getConfig('pedido_cabecera_table', '');
     const pedidoDetalleTable  = await getConfig('pedido_detalle_table', '');
+    const cotizacionCabeceraTable = await getConfig('cotizacion_cabecera_table', 'cbcot');
+    const cotizacionDetalleTable  = await getConfig('cotizacion_detalle_table', 'dtcot');
 
     res.json({ 
       ok: true, 
@@ -31,6 +35,8 @@ router.get('/', async (_req, res) => {
         cliente: { fieldMap: fieldMapCli },
         pedido_cabecera: { fieldMap: fieldMapPedCab, table: pedidoCabeceraTable },
         pedido_detalle: { fieldMap: fieldMapPedDet, table: pedidoDetalleTable },
+        cotizacion_cabecera: { fieldMap: fieldMapCotCab, table: cotizacionCabeceraTable },
+        cotizacion_detalle: { fieldMap: fieldMapCotDet, table: cotizacionDetalleTable },
       } 
     });
   } catch (err) {
@@ -48,6 +54,8 @@ router.put('/', async (req, res) => {
     const cli    = incoming.cliente ?? {};
     const pedCab = incoming.pedido_cabecera ?? {};
     const pedDet = incoming.pedido_detalle ?? {};
+    const cotCab = incoming.cotizacion_cabecera ?? {};
+    const cotDet = incoming.cotizacion_detalle ?? {};
 
     if (art.fieldMap)          await saveFieldMapping('articulo', art.fieldMap);
     if (art.categories)        await setConfig('articulo_categories', art.categories);
@@ -60,6 +68,11 @@ router.put('/', async (req, res) => {
     if (pedCab.table !== undefined)   await setConfig('pedido_cabecera_table', pedCab.table);
     if (pedDet.fieldMap)              await saveFieldMapping('pedido_detalle', pedDet.fieldMap);
     if (pedDet.table !== undefined)   await setConfig('pedido_detalle_table', pedDet.table);
+
+    if (cotCab.fieldMap)              await saveFieldMapping('cotizacion_cabecera', cotCab.fieldMap);
+    if (cotCab.table !== undefined)   await setConfig('cotizacion_cabecera_table', cotCab.table);
+    if (cotDet.fieldMap)              await saveFieldMapping('cotizacion_detalle', cotDet.fieldMap);
+    if (cotDet.table !== undefined)   await setConfig('cotizacion_detalle_table', cotDet.table);
 
     res.json({ ok: true, data: incoming });
   } catch (err) {
@@ -141,6 +154,18 @@ router.get('/fields/pedido_detalle', async (_req, res) => {
   res.json({ ok: true, psFields: PS_FIELDS_DETALLE });
 });
 
+// GET /api/mapeo/fields/cotizacion_cabecera — campos PS disponibles para cabecera de cotización
+router.get('/fields/cotizacion_cabecera', async (_req, res) => {
+  const { PS_FIELDS_CABECERA } = require('../src/handlers/pedido');
+  res.json({ ok: true, psFields: PS_FIELDS_CABECERA });
+});
+
+// GET /api/mapeo/fields/cotizacion_detalle — campos PS disponibles para renglones de cotización
+router.get('/fields/cotizacion_detalle', async (_req, res) => {
+  const { PS_FIELDS_DETALLE } = require('../src/handlers/pedido');
+  res.json({ ok: true, psFields: PS_FIELDS_DETALLE });
+});
+
 // GET /api/mapeo/tables — lista de tablas del ERP, para el selector de tabla de pedidos
 router.get('/tables', async (_req, res) => {
   const { query } = require('../src/db');
@@ -178,16 +203,35 @@ router.get('/branch/:branchId', async (req, res) => {
     const branchId = parseInt(req.params.branchId);
     if (!branchId) return res.status(400).json({ error: 'branchId inválido' });
 
-    const [articulo, articuloalm, cliente, pedido_cabecera, pedido_detalle] = await Promise.all([
+    const [articulo, articuloalm, cliente, pedido_cabecera, pedido_detalle, cotizacion_cabecera, cotizacion_detalle] = await Promise.all([
       getMappingForBranch('articulo',    branchId),
       getMappingForBranch('articuloalm', branchId),
       getMappingForBranch('cliente',     branchId),
       getMappingForBranch('pedido_cabecera', branchId),
       getMappingForBranch('pedido_detalle',  branchId),
+      getMappingForBranch('cotizacion_cabecera', branchId),
+      getMappingForBranch('cotizacion_detalle',  branchId),
     ]);
     const pedido_cabecera_table = await getConfig('pedido_cabecera_table', '');
     const pedido_detalle_table  = await getConfig('pedido_detalle_table', '');
-    res.json({ ok: true, data: { articulo, articuloalm, cliente, pedido_cabecera, pedido_detalle, pedido_cabecera_table, pedido_detalle_table } });
+    const cotizacion_cabecera_table = await getConfig('cotizacion_cabecera_table', 'cbcot');
+    const cotizacion_detalle_table  = await getConfig('cotizacion_detalle_table', 'dtcot');
+    res.json({
+      ok: true,
+      data: {
+        articulo,
+        articuloalm,
+        cliente,
+        pedido_cabecera,
+        pedido_detalle,
+        pedido_cabecera_table,
+        pedido_detalle_table,
+        cotizacion_cabecera,
+        cotizacion_detalle,
+        cotizacion_cabecera_table,
+        cotizacion_detalle_table
+      }
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
