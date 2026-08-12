@@ -248,11 +248,11 @@ async function handleOrderInsert(data) {
     const queryParams = [];
 
     if (erpIdCol && data.Id) {
-      conditions.push(`\`${erpIdCol}\` = ?`);
+      conditions.push(`CONVERT(\`${erpIdCol}\` USING utf8mb4) = ?`);
       queryParams.push(data.Id);
     }
     if (erpOrderNumberCol && data.OrderNumber) {
-      conditions.push(`\`${erpOrderNumberCol}\` = ?`);
+      conditions.push(`CONVERT(\`${erpOrderNumberCol}\` USING utf8mb4) = ?`);
       queryParams.push(data.OrderNumber);
     }
     if (data.OrderNumber && !isNaN(data.OrderNumber)) {
