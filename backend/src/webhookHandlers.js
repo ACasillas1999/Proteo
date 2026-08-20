@@ -279,19 +279,29 @@ async function handleOrderInsert(data) {
       }
     }
 
-    // 2. Si el pedido ya existe, actualizamos la columna Distribuido
+    // 2. Si el pedido ya existe, actualizamos la columna Distribuido únicamente si StatusId es 41 (pasa a 0) o 11 (pasa a 1)
     if (exists) {
       console.log(`[WEBHOOK] Pedido ${orderNumber} ya existe con No_Pedido: ${existingNoPedido}.`);
       if (data.StatusId !== undefined) {
-        const targetDistribuido = parseInt(data.StatusId) === 11 ? 1 : 0;
-        console.log(`[WEBHOOK] Actualizando 'Distribuido' a ${targetDistribuido} en No_Pedido: ${existingNoPedido} (StatusId: ${data.StatusId})`);
-        
-        const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
-        if (realDistCol) {
-          await query(
-            `UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`,
-            [targetDistribuido, existingNoPedido]
-          );
+        const statusIdNum = parseInt(data.StatusId);
+        if (statusIdNum === 41) {
+          console.log(`[WEBHOOK] StatusId es 41. Actualizando 'Distribuido' a 0 en No_Pedido: ${existingNoPedido}`);
+          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
+          if (realDistCol) {
+            await query(
+              `UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`,
+              [0, existingNoPedido]
+            );
+          }
+        } else if (statusIdNum === 11) {
+          console.log(`[WEBHOOK] StatusId es 11. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
+          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
+          if (realDistCol) {
+            await query(
+              `UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`,
+              [1, existingNoPedido]
+            );
+          }
         }
       }
       await saveWebhookLog('orders', orderNumber, data, 1, null);
@@ -572,7 +582,7 @@ async function handleOrderInsert(data) {
 
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 11 ? 1 : 0);
+          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 41 ? 0 : 1);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
@@ -591,7 +601,7 @@ async function handleOrderInsert(data) {
       } else {
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 11 ? 1 : 0);
+          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 41 ? 0 : 1);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
