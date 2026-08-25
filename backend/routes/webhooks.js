@@ -62,7 +62,7 @@ router.get('/pending', authenticateWebhook, async (req, res) => {
     if (!branchId) return res.status(400).json({ error: 'branch_id required' });
 
     const [rows] = await localQuery(
-      `SELECT * FROM webhook_logs WHERE branch_id = ? AND id > ? ORDER BY id ASC LIMIT ${limitVal}`,
+      `SELECT * FROM webhook_logs WHERE (branch_id = ? OR branch_id IS NULL) AND id > ? ORDER BY id ASC LIMIT ${limitVal}`,
       [branchId, afterId]
     );
     res.json({ ok: true, data: rows, count: rows.length });
@@ -98,7 +98,21 @@ router.post('/powersales/object-update', authenticateWebhook, async (req, res) =
       // En 'orders' no viene en la raíz — solo está anidado en details_promo[].order.BranchId
       const rawBranch = record.data?.BranchId
         ?? record.data?.details_promo?.[0]?.order?.BranchId;
-      const branchId  = typeof rawBranch === 'object' ? (rawBranch?.Id ?? null) : (rawBranch ?? null);
+      let branchId  = typeof rawBranch === 'object' ? (rawBranch?.Id ?? null) : (rawBranch ?? null);
+
+      // Si no viene BranchId (como en actualizaciones de estatus simples), inferimos el branch_id del pedido anterior
+      if (!branchId && record.data?.OrderNumber) {
+        try {
+          const [prevLogs] = await localQuery(
+            `SELECT branch_id FROM webhook_logs WHERE entidad = 'orders' AND branch_id IS NOT NULL AND datos LIKE ? ORDER BY id DESC LIMIT 1`,
+            [`%${record.data.OrderNumber}%`]
+          );
+          if (prevLogs.length > 0 && prevLogs[0].branch_id) {
+            branchId = prevLogs[0].branch_id;
+            console.log(`[WEBHOOK] branchId inferido (${branchId}) para pedido ${record.data.OrderNumber}`);
+          }
+        } catch (_) {}
+      }
 
       const objType = record.object;
       let entidad, clave;
