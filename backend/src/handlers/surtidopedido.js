@@ -16,30 +16,83 @@ async function sync(cambio) {
   const cabTable = await getConfig('pedido_cabecera_table', 'cbpedvta');
   const fieldMap = await getFieldMapping('pedido_cabecera');
   
-  // Buscar qué columna del ERP está mapeada para el ID interno de PowerSales del Pedido ('Id')
+  // Buscar qué columnas del ERP están mapeadas para 'Id' y 'OrderNumber'
   const erpIdCol = fieldMap['Id'];
-  if (!erpIdCol) {
-    console.log(`[SYNC surtidopedido] Omitiendo envío para Folio: ${clave_registro}. El campo 'Id' del Pedido no está mapeado en la interfaz de Mapeo.`);
-    return null;
-  }
+  const erpOrderNumCol = fieldMap['OrderNumber'];
 
-  // 2. Buscar el ID de PowerSales en la columna mapeada del ERP correspondiente a este Folio
-  // La columna de relación local (Folio) se busca en No_Pedido
+  // 2. Buscar datos del pedido en la tabla de cabecera del ERP (cbpedvta)
   const [orderRows] = await query(
-    `SELECT \`${erpIdCol}\` AS orderPsId FROM \`${cabTable}\` WHERE No_Pedido = ? LIMIT 1`,
-    [clave_registro]
+    `SELECT * FROM \`${cabTable}\` WHERE No_Pedido = ? OR IDPs = ? LIMIT 1`,
+    [clave_registro, clave_registro]
   );
 
-  if (orderRows.length === 0) {
-    throw new Error(`Pedido local con Folio '${clave_registro}' no encontrado en tabla '${cabTable}'.`);
+  let orderPsId = null;
+  let orderNumberIpad = null;
+
+  if (orderRows.length > 0) {
+    const row = orderRows[0];
+    if (erpIdCol && row[erpIdCol]) {
+      orderPsId = row[erpIdCol];
+    }
+    if (erpOrderNumCol && row[erpOrderNumCol]) {
+      orderNumberIpad = row[erpOrderNumCol];
+    } else if (row.IDPs) {
+      orderNumberIpad = row.IDPs;
+    }
   }
 
-  const orderPsId = orderRows[0].orderPsId;
+  if (!orderNumberIpad) {
+    orderNumberIpad = String(clave_registro);
+  }
+
+  // 3. Buscar en webhook_logs para recuperar orderPsId, EmployeeId y detalles originales de PowerSales
+  let employeeId = 3; // fallback por defecto
+  let originalDetails = [];
+  try {
+    const [logRows] = await localQuery(
+      "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 200"
+    );
+    for (const log of logRows) {
+      const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
+      if (!datosJson) continue;
+
+      const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
+      const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
+      const poNum = datosJson.order ? datosJson.order.PurchaseOrderNumber : datosJson.PurchaseOrderNumber;
+      const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
+      const details = datosJson.order ? datosJson.order.details : datosJson.details;
+
+      const matchById = orderPsId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId));
+      const matchByNum = orderNumberIpad && (String(orderNum).trim() === String(orderNumberIpad).trim());
+      const matchByClave = (String(orderId) === String(clave_registro)) || 
+                           (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
+                           (poNum && String(poNum).trim() === String(clave_registro).trim());
+
+      if (matchById || matchByNum || matchByClave) {
+        if (!orderPsId && orderId) {
+          orderPsId = orderId;
+        }
+        if (!orderNumberIpad && orderNum) {
+          orderNumberIpad = orderNum;
+        }
+        if (repObj && repObj.Id) {
+          employeeId = Number(repObj.Id);
+        }
+        if (Array.isArray(details) && details.length > 0) {
+          originalDetails = details;
+        }
+        if (orderPsId) break;
+      }
+    }
+  } catch (err) {
+    console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
+  }
+
   if (!orderPsId) {
-    throw new Error(`El pedido local '${clave_registro}' en tabla '${cabTable}' no tiene un valor en la columna mapeada '${erpIdCol}'.`);
+    throw new Error(`No se pudo encontrar el ID interno de PowerSales ni en la tabla local '${cabTable}' ni en los logs de webhook para el Folio '${clave_registro}'. Verifica que el pedido exista en PowerSales.`);
   }
 
-  // 3. Determinar los identificadores numéricos de estatus para PowerSales
+  // 4. Determinar los identificadores numéricos de estatus para PowerSales
   let statusId = 44; // default / 'SIN DEFINIR'
   if (status === 'FULLY_PICKED') {
     statusId = 43;
@@ -47,42 +100,7 @@ async function sync(cambio) {
     statusId = 6;
   }
 
-  // 3.5 Intentar recuperar el OrderNumber original, el ID de Vendedor y las partidas originales de PowerSales
-  let orderNumberIpad = String(clave_registro); // fallback: folio local
-  let employeeId = 3; // fallback por defecto
-  let originalDetails = [];
-  try {
-    const [logRows] = await localQuery(
-      "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 100"
-    );
-    for (const log of logRows) {
-      const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
-      if (!datosJson) continue;
-
-      // Intentar extraer del objeto anidado 'order' o de la raíz del JSON
-      const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
-      const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
-      const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
-      const details = datosJson.order ? datosJson.order.details : datosJson.details;
-
-      if (orderId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId))) {
-        if (orderNum) {
-          orderNumberIpad = orderNum;
-        }
-        if (repObj && repObj.Id) {
-          employeeId = Number(repObj.Id);
-        }
-        if (Array.isArray(details)) {
-          originalDetails = details;
-        }
-        break;
-      }
-    }
-  } catch (err) {
-    console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
-  }
-
-  // 4. Obtener las partidas del pedido desde la tabla de detalles del ERP (dtpedvta)
+  // 5. Obtener las partidas del pedido desde la tabla de detalles del ERP (dtpedvta)
   const detTable = await getConfig('pedido_detalle_table', 'dtpedvta');
   const fieldMapDet = await getFieldMapping('pedido_detalle');
 
@@ -130,27 +148,26 @@ async function sync(cambio) {
       SubTotalAmount: subTotal.toFixed(2),
       TotalAmount: total.toFixed(2),
       UniqueId: origItem ? origItem.UniqueId : `UUID-${orderPsId}-${sku}`,
-      WarehouseId: origItem ? String(origItem.WarehouseId) : "1"
+      WarehouseId: (origItem && origItem.WarehouseId) ? String(origItem.WarehouseId) : "1"
     });
   }
 
   const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const payload = {
-    Id: orderPsId,
+    Id: Number(orderPsId),
     StatusId: statusId,
     StatusName: status,
     OrderNumberIPAD: orderNumberIpad,
-    IDPedidoEnc: orderPsId,
-    Employee: employeeId,
+    IDPedidoEnc: Number(orderPsId),
+    Employee: Number(employeeId),
     ExternalReference: orderNumberIpad,
     ModifiedDate: nowStr,
     OrdersDetails: ordersDetails
   };
 
-  console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) con ${ordersDetails.length} artículos para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro})`);
+  console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) con ${ordersDetails.length} artículos para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro}, OrderNumber: ${orderNumberIpad})`);
   
   // PowerSales: POST /orders con el payload de actualización de estatus de surtido
-  // Nota: El API espera 'data' como un objeto único, no como un arreglo.
   const response = await ps.post('/orders', { data: payload });
 
   if (response && response.data) {

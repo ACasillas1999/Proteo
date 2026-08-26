@@ -11,26 +11,23 @@ const hostname = urlObj.hostname;
 const basePath = urlObj.pathname + '/orders';
 
 // CONFIGURACIÓN DE PRUEBA: Cambia este número para probar diferentes casos:
-// 1 = ProductId como String ("1020632")      --> Truena con: "Cannot access offset of type string on string"
-// 2 = ProductId como Entero (316)            --> Truena con: "Trying to access array offset on value of type int"
-// 3 = ProductId como Objeto ({ Id: 316 })    --> Truena con: "Undefined array key "ProductId""
+// 1 = ProductId como String ("10295QO120")   --> Truena con: "Cannot access offset of type string on string"
+// 2 = ProductId como Entero (98680)          --> Truena con: "Trying to access array offset on value of type int"
+// 3 = ProductId como Objeto ({ Id: 98680 })  --> Truena con: "Undefined array key "ProductId""
 // 4 = Arreglo de detalles vacío ([])         --> Exitoso (200 OK), pero BORRA todos los artículos del pedido
 const TIPO_PRUEBA = 1; 
 
 // Pedido real para la prueba (debe existir en la base de datos de PowerSales)
-const orderId = 114; 
-const orderNumberIpad = 'VIC00000102W'; 
+const orderId = 94; 
+const orderNumberIpad = 'VIC00000030W'; 
 
-let productVal1, productVal2;
+let productVal1;
 if (TIPO_PRUEBA === 1) {
-  productVal1 = "1020625"; 
-  productVal2 = "1020632";
+  productVal1 = "10295QO120"; 
 } else if (TIPO_PRUEBA === 2) {
-  productVal1 = 315; 
-  productVal2 = 316;
+  productVal1 = 98680; 
 } else if (TIPO_PRUEBA === 3) {
-  productVal1 = { Id: 315 }; 
-  productVal2 = { Id: 316 };
+  productVal1 = { Id: 98680 }; 
 }
 
 const payload = {
@@ -39,34 +36,21 @@ const payload = {
   StatusName: 'FULLY_PICKED',
   OrderNumberIPAD: orderNumberIpad,
   IDPedidoEnc: orderId,
-  Employee: 3,
+  Employee: 15,
   ExternalReference: orderNumberIpad,
   ModifiedDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
   OrdersDetails: TIPO_PRUEBA === 4 ? [] : [
     {
-      "Id": 138,
+      "Id": 124,
       "ProductId": productVal1,
-      "ProductCode": "1020625",
-      "QtyOrdered": "2.00",
-      "QtyDelivered": "0.00",
-      "QtyPicked": "2.00",
-      "Price": "79.64",
-      "SubTotalAmount": "159.28",
-      "TotalAmount": "159.28",
-      "UniqueId": "11442332026-08-05 10:16:06",
-      "WarehouseId": "1"
-    },
-    {
-      "Id": 137,
-      "ProductId": productVal2,
-      "ProductCode": "1020632",
+      "ProductCode": "10295QO120",
       "QtyOrdered": "1.00",
       "QtyDelivered": "0.00",
       "QtyPicked": "1.00",
-      "Price": "99.16",
-      "SubTotalAmount": "99.16",
-      "TotalAmount": "99.16",
-      "UniqueId": "11442332026-08-05 10:16:06",
+      "Price": "579.00",
+      "SubTotalAmount": "579.00",
+      "TotalAmount": "671.64",
+      "UniqueId": "9432215152026-08-26 08:40:24",
       "WarehouseId": "1"
     }
   ]
