@@ -595,8 +595,15 @@ async function handleOrderInsert(data) {
                 rowPairsMap.set(realCol, val);
               }
 
-              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', 0.0);
+              const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
+              const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
+              if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
+
+              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
+              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
               setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
+              setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+              setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
               setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
               setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
               setIfColExists(rowPairsMap, cotDetCols, 'PL_3', 0.0);
@@ -609,7 +616,7 @@ async function handleOrderInsert(data) {
                 const rVals = rowPairs.map(([, v]) => v);
                 const rPlaceholders = rCols.map(() => '?').join(', ');
                 const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
-                await connection.execute(`INSERT INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+                await connection.execute(`INSERT IGNORE INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
               }
             }
             console.log(`[WEBHOOK] Renglones de cotización insertados para folio ${nextCotiza}`);
@@ -698,8 +705,15 @@ async function handleOrderInsert(data) {
             rowPairsMap.set(realCol, val);
           }
 
+          const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
+          const realCveArtCol = detCols.find(c => c.toLowerCase() === 'cve_articulo' || c.toLowerCase() === 'cve_art');
+          if (realCveArtCol && itemSku) rowPairsMap.set(realCveArtCol, itemSku);
+
+          setIfColExists(rowPairsMap, detCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
+          setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.Price || 0));
+          setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
           setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
           setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
 
@@ -709,7 +723,7 @@ async function handleOrderInsert(data) {
             const rVals = rowPairs.map(([, v]) => v);
             const rPlaceholders = rCols.map(() => '?').join(', ');
             const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
-            await connection.execute(`INSERT INTO \`${detTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+            await connection.execute(`INSERT IGNORE INTO \`${detTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
           }
         }
         console.log(`[WEBHOOK] Pedido ${orderNumber}: ${details.length} renglón(es) insertados en '${detTable}'`);
