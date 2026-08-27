@@ -304,6 +304,57 @@ async function handleOrderInsert(data) {
           }
         }
       }
+
+      // Si el pedido ya existe pero NO tiene renglones en la tabla de detalles y este webhook sí incluye renglones, insertarlos
+      const detailsArr = Array.isArray(data.details) ? data.details : [];
+      if (detailsArr.length > 0 && detTable && (await tableExists(detTable))) {
+        const [existingDetRows] = await query(
+          `SELECT COUNT(*) AS total FROM \`${detTable}\` WHERE No_Pedido = ?`,
+          [existingNoPedido]
+        );
+        if (existingDetRows[0].total === 0) {
+          console.log(`[WEBHOOK] Pedido ${orderNumber} ya existía pero tenía 0 renglones. Insertando ${detailsArr.length} renglón(es) en '${detTable}'...`);
+          const detCols = await validColumns(detTable);
+          let partidaIndex = 1;
+          const todayStr = new Date().toISOString().split('T')[0];
+          const timeStr = new Date().toTimeString().split(' ')[0];
+
+          for (const item of detailsArr) {
+            const rowPairsMap = new Map();
+            const realFKCol = detCols.find(c => c.toLowerCase() === 'no_pedido');
+            if (realFKCol) rowPairsMap.set(realFKCol, existingNoPedido);
+
+            const realPartidaCol = detCols.find(c => c.toLowerCase() === 'partida');
+            if (realPartidaCol) rowPairsMap.set(realPartidaCol, partidaIndex++);
+
+            for (const def of PS_FIELDS_DETALLE) {
+              const erpCol = fieldMapDet[def.field];
+              if (!erpCol) continue;
+              const realCol = detCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+              if (!realCol || realCol === realFKCol || realCol === realPartidaCol) continue;
+
+              const val = def.field === 'OrderNumber' ? existingNoPedido : item[def.field];
+              if (val === undefined) continue;
+              rowPairsMap.set(realCol, val);
+            }
+
+            setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
+            setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
+            setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
+            setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
+
+            const rowPairs = Array.from(rowPairsMap.entries());
+            if (rowPairs.length > 0) {
+              const rCols = rowPairs.map(([c]) => c);
+              const rVals = rowPairs.map(([, v]) => v);
+              const rPlaceholders = rCols.map(() => '?').join(', ');
+              const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
+              await query(`INSERT INTO \`${detTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+            }
+          }
+        }
+      }
+
       await saveWebhookLog('orders', orderNumber, data, 1, null);
       return;
     }
@@ -646,6 +697,11 @@ async function handleOrderInsert(data) {
             if (val === undefined) continue;
             rowPairsMap.set(realCol, val);
           }
+
+          setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
+          setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
+          setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
+          setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
 
           const rowPairs = Array.from(rowPairsMap.entries());
           if (rowPairs.length > 0) {

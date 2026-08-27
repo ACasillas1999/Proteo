@@ -113,16 +113,23 @@ async function sync(cambio) {
     [clave_registro]
   );
 
+  const remainingDetails = [...originalDetails];
   const ordersDetails = [];
   for (const row of itemRows) {
     const sku = row[skuCol];
     if (!sku) continue;
 
-    // Buscar la partida correspondiente en el webhook original para preservar IDs
-    const origItem = originalDetails.find(d => 
+    // Buscar la partida correspondiente en el webhook original para preservar IDs sin duplicar
+    const origIndex = remainingDetails.findIndex(d => 
       String(d.ProductId).trim() === String(sku).trim() || 
       String(d.ProductCode).trim() === String(sku).trim()
     );
+
+    let origItem = null;
+    if (origIndex !== -1) {
+      origItem = remainingDetails[origIndex];
+      remainingDetails.splice(origIndex, 1);
+    }
 
     const qtyOrdered = Number(row[qtyCol] || 0);
     const qtyDelivered = Number(row.Cant_Facturada || 0);
