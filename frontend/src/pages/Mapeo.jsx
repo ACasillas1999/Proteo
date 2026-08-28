@@ -12,7 +12,11 @@ const TYPE_BADGE = {
   categoryId: { label: 'Categoría',  color: '#fbbf24' },
   fixed:      { label: 'Sistema',    color: '#6b7280' },
   erpColumn:  { label: 'Columna ERP',color: '#38bdf8' },
-  numStr:     { label: 'Núm. (Texto)',color: '#a78bfa' }
+  numStr:     { label: 'Núm. (Texto)',color: '#a78bfa' },
+  computed:   { label: 'Calculado',  color: '#f59e0b' },
+  autoFixed:  { label: 'Fijo (16)',  color: '#10b981' },
+  autoSystem: { label: 'Fecha/Hora', color: '#a78bfa' },
+  articuloPrice: { label: 'Precio Especial', color: '#ec4899' }
 };
 
 export default function Mapeo() {
@@ -451,6 +455,30 @@ export default function Mapeo() {
                   control = (
                     <span style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic' }}>
                       {String(fixedValue)} <span style={{ opacity: .5 }}>(sistema)</span>
+                    </span>
+                  );
+                } else if (type === 'computed') {
+                  control = (
+                    <span style={{ color: '#f59e0b', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      ⚡ Calculado automáticamente (TotalAmount - TotalTax)
+                    </span>
+                  );
+                } else if (type === 'autoFixed') {
+                  control = (
+                    <span style={{ color: '#10b981', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      🔒 Asignación fija (16 a columna IVA_Porcentaje)
+                    </span>
+                  );
+                } else if (type === 'autoSystem') {
+                  control = (
+                    <span style={{ color: '#a78bfa', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      ⏰ Asignado automáticamente (Fecha y Hora actual del servidor en Fech_Captura / Hora_Captura)
+                    </span>
+                  );
+                } else if (type === 'articuloPrice') {
+                  control = (
+                    <span style={{ color: '#ec4899', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      🏷️ Precio Especial desde la tabla 'articulo' (columna PL_3 del ERP)
                     </span>
                   );
                 } else if (type === 'skuPrefix') {

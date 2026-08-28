@@ -460,6 +460,13 @@ async function handleOrderInsert(data) {
       if (realCotizadorCol)   headerPairsMap.set(realCotizadorCol, localVendedorId);
     }
 
+    const rawPoVal = getPath(data, 'PurchaseOrderNumber') || getPath(data, 'details_promo.0.order.PurchaseOrderNumber') || '';
+    const poVal = rawPoVal ? String(rawPoVal).trim() : '';
+    if (poVal) {
+      const realNoOcCol = cabCols.find(c => c.toLowerCase() === 'no_oc' || c.toLowerCase() === 'oc');
+      if (realNoOcCol) headerPairsMap.set(realNoOcCol, poVal.substring(0, 11));
+    }
+
     // 5. Helper local para agregar columnas por defecto si no están mapeadas
     const setIfColExists = (map, cols, colName, value) => {
       const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
@@ -468,6 +475,25 @@ async function handleOrderInsert(data) {
       }
     };
 
+    const forceColValue = (map, cols, colName, value) => {
+      const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
+      if (realCol) {
+        map.set(realCol, value);
+      }
+    };
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const timeStr  = new Date().toTimeString().split(' ')[0];
+
+    const totalAmountVal = Number(data.TotalAmount || 0);
+    const totalTaxVal    = Number(data.TotalTax || 0);
+    const calculatedSubtotal = Math.max(0, Number((totalAmountVal - totalTaxVal).toFixed(4)));
+
+    forceColValue(headerPairsMap, cabCols, 'Subtotal', calculatedSubtotal);
+    forceColValue(headerPairsMap, cabCols, 'IVA_Porcentaje', 16);
+
+    setIfColExists(headerPairsMap, cabCols, 'Fech_Captura', todayStr);
+    setIfColExists(headerPairsMap, cabCols, 'Hora_Captura', timeStr);
     setIfColExists(headerPairsMap, cabCols, 'Asesor', branchName.substring(0, 6));
     if (cabTable.toLowerCase() !== 'cbpedvta') {
       setIfColExists(headerPairsMap, cabCols, 'Proyecto', 'NA');
@@ -476,6 +502,30 @@ async function handleOrderInsert(data) {
     }
 
     const details = Array.isArray(data.details) ? data.details : [];
+
+    // Consultar Precio_Especial de la tabla 'articulo' para los SKUs del detalle
+    const skuList = details
+      .map(item => String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || '').trim())
+      .filter(Boolean);
+
+    const precioEspecialMap = new Map();
+    if (skuList.length > 0) {
+      try {
+        const placeholders = skuList.map(() => '?').join(', ');
+        const [artRows] = await query(
+          `SELECT Clave_Articulo, Precio_Especial FROM articulo WHERE Clave_Articulo IN (${placeholders})`,
+          skuList
+        );
+        for (const row of artRows) {
+          if (row.Clave_Articulo) {
+            precioEspecialMap.set(String(row.Clave_Articulo).trim().toLowerCase(), Number(row.Precio_Especial || 0));
+          }
+        }
+      } catch (artErr) {
+        console.error('[WEBHOOK] Error al buscar Precio_Especial en articulo:', artErr.message);
+      }
+    }
+
     const pool = getPool();
     const connection = await pool.getConnection();
 
@@ -536,6 +586,14 @@ async function handleOrderInsert(data) {
             if (realCotizadorCol)   headerCotPairsMap.set(realCotizadorCol, localVendedorId);
           }
 
+          if (poVal) {
+            const realCotOcCol = cotCabCols.find(c => c.toLowerCase() === 'oc' || c.toLowerCase() === 'no_oc');
+            if (realCotOcCol) headerCotPairsMap.set(realCotOcCol, poVal.substring(0, 10));
+          }
+
+          forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
+          forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
+
           // Sensible defaults para cotizaciones
           setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha', todayStr);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Fech_Entrega', todayStr);
@@ -547,7 +605,6 @@ async function handleOrderInsert(data) {
           setIfColExists(headerCotPairsMap, cotCabCols, 'Contacto', 0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Dias_Credito', 0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Aumento_Precio', 0.0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Subtotal', 0.0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Descto_Porcentaje', 0.0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'TotalFacturado', 0.0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Remision', 0);
@@ -600,6 +657,8 @@ async function handleOrderInsert(data) {
               const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
               if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
 
+              const precioEspecialVal = (itemSku ? precioEspecialMap.get(itemSku.toLowerCase()) : undefined) ?? 0.0;
+
               setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
               setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
               setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
@@ -607,7 +666,7 @@ async function handleOrderInsert(data) {
               setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
               setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
               setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
-              setIfColExists(rowPairsMap, cotDetCols, 'PL_3', 0.0);
+              setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
               setIfColExists(rowPairsMap, cotDetCols, 'DescuentoCliente', '');
               setIfColExists(rowPairsMap, cotDetCols, 'FechaEntrega', todayStr);
 
@@ -710,6 +769,8 @@ async function handleOrderInsert(data) {
           const realCveArtCol = detCols.find(c => c.toLowerCase() === 'cve_articulo' || c.toLowerCase() === 'cve_art');
           if (realCveArtCol && itemSku) rowPairsMap.set(realCveArtCol, itemSku);
 
+          const precioEspecialVal = (itemSku ? precioEspecialMap.get(itemSku.toLowerCase()) : undefined) ?? 0.0;
+
           setIfColExists(rowPairsMap, detCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
@@ -717,6 +778,7 @@ async function handleOrderInsert(data) {
           setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
           setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
           setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
+          setIfColExists(rowPairsMap, detCols, 'PL_3', precioEspecialVal);
 
           const rowPairs = Array.from(rowPairsMap.entries());
           if (rowPairs.length > 0) {
