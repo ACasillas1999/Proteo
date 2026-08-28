@@ -279,12 +279,23 @@ async function handleOrderInsert(data) {
       }
     }
 
-    // 2. Si el pedido ya existe, actualizamos la columna Distribuido únicamente si StatusId es 41 (pasa a 0) o 11 (pasa a 1)
+    // 2. Si el pedido ya existe, actualizamos la columna Distribuido únicamente si StatusId es 41 (pasa a 0) o 11 (pasa a 1), o Estatus_Pedido a 'C' si es 8 (CANCELLED)
     if (exists) {
       console.log(`[WEBHOOK] Pedido ${orderNumber} ya existe con No_Pedido: ${existingNoPedido}.`);
-      if (data.StatusId !== undefined) {
+      if (data.StatusId !== undefined || data.StatusName !== undefined) {
         const statusIdNum = parseInt(data.StatusId);
-        if (statusIdNum === 41) {
+        const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
+
+        if (statusIdNum === 8 || statusNameVal.includes('CANCEL')) {
+          console.log(`[WEBHOOK] StatusId es 8 / Cancelado. Actualizando 'Estatus_Pedido' a 'C' en No_Pedido: ${existingNoPedido}`);
+          const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
+          if (realEstatusCol) {
+            await query(
+              `UPDATE \`${cabTable}\` SET \`${realEstatusCol}\` = 'C' WHERE No_Pedido = ?`,
+              [existingNoPedido]
+            );
+          }
+        } else if (statusIdNum === 41) {
           console.log(`[WEBHOOK] StatusId es 41. Actualizando 'Distribuido' a 0 en No_Pedido: ${existingNoPedido}`);
           const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
           if (realDistCol) {
@@ -431,11 +442,15 @@ async function handleOrderInsert(data) {
       headerPairsMap.set(realCol, val);
     }
 
+    const statusIdVal = parseInt(data.StatusId);
+    const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
     const orderTypeVal = typeof data.OrderType === 'string' ? data.OrderType.toUpperCase().trim() : '';
     const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
     const realAfectarCol = cabCols.find(c => c.toLowerCase() === 'afectarinventario');
 
-    if (orderTypeVal.includes('ANEXO')) {
+    if (statusIdVal === 8 || statusNameVal.includes('CANCEL')) {
+      if (realEstatusCol) headerPairsMap.set(realEstatusCol, 'C');
+    } else if (orderTypeVal.includes('ANEXO')) {
       if (realEstatusCol) headerPairsMap.set(realEstatusCol, 'P');
       if (realAfectarCol) headerPairsMap.set(realAfectarCol, 1);
     } else if (orderTypeVal.includes('NORMAL') || orderTypeVal.includes('REMISION')) {
@@ -490,6 +505,7 @@ async function handleOrderInsert(data) {
     const calculatedSubtotal = Math.max(0, Number((totalAmountVal - totalTaxVal).toFixed(4)));
 
     forceColValue(headerPairsMap, cabCols, 'Subtotal', calculatedSubtotal);
+    forceColValue(headerPairsMap, cabCols, 'Total', totalAmountVal);
     forceColValue(headerPairsMap, cabCols, 'IVA_Porcentaje', 16);
 
     setIfColExists(headerPairsMap, cabCols, 'Fech_Captura', todayStr);
@@ -592,6 +608,7 @@ async function handleOrderInsert(data) {
           }
 
           forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
+          forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
           forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
 
           // Sensible defaults para cotizaciones
