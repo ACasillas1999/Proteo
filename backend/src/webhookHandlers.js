@@ -360,16 +360,19 @@ async function handleOrderInsert(data) {
     }
 
     // 3. Si el pedido NO existe, realizamos las búsquedas de relaciones locales
-    const customerNumber = getPath(data, 'CustomerId.CustomerNumber');
+    const customerNumber = getPath(data, 'CustomerId.CustomerNumber') || getPath(data, 'CustomerId.Id');
     let localClienteId = null;
     if (customerNumber) {
       try {
-        const [clientRows] = await query("SELECT Cliente FROM clientes WHERE IdGlobal = ? LIMIT 1", [customerNumber]);
+        const [clientRows] = await query(
+          "SELECT Cliente FROM clientes WHERE IdGlobal = ? LIMIT 1",
+          [customerNumber]
+        );
         if (clientRows.length > 0) {
           localClienteId = clientRows[0].Cliente;
         }
       } catch (cliErr) {
-        console.error(`[WEBHOOK] Error al buscar ID local de cliente:`, cliErr.message);
+        console.error(`[WEBHOOK] Error al buscar ID local de cliente por IdGlobal:`, cliErr.message);
       }
     }
 
@@ -442,11 +445,10 @@ async function handleOrderInsert(data) {
     }
 
     if (localClienteId) {
-      const erpClientCol = fieldMapCab['CustomerId.CustomerNumber'] || fieldMapCab['CustomerId.Id'];
-      if (erpClientCol) {
-        const realClientCol = cabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase());
-        if (realClientCol) headerPairsMap.set(realClientCol, localClienteId);
-      }
+      const erpClientCol = fieldMapCab['CustomerId.CustomerNumber'] || fieldMapCab['CustomerId.Id'] || 'Cve_Cte';
+      const realClientCol = cabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase())
+        || cabCols.find(c => ['cve_cte', 'cve_cliente', 'cliente'].includes(c.toLowerCase()));
+      if (realClientCol) headerPairsMap.set(realClientCol, localClienteId);
     }
 
     if (localVendedorId) {
@@ -518,13 +520,12 @@ async function handleOrderInsert(data) {
             headerCotPairsMap.set(realCol, val);
           }
 
-          // Inyecciones manuales
+          // Inyecciones manuales para Cotización
           if (localClienteId) {
-            const erpClientCol = fieldMapCotCab['CustomerId.CustomerNumber'] || fieldMapCotCab['CustomerId.Id'];
-            if (erpClientCol) {
-              const realClientCol = cotCabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase());
-              if (realClientCol) headerCotPairsMap.set(realClientCol, localClienteId);
-            }
+            const erpClientCol = fieldMapCotCab['CustomerId.CustomerNumber'] || fieldMapCotCab['CustomerId.Id'] || 'Cve_Cte';
+            const realClientCol = cotCabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase())
+              || cotCabCols.find(c => ['cve_cte', 'cve_cliente', 'cliente'].includes(c.toLowerCase()));
+            if (realClientCol) headerCotPairsMap.set(realClientCol, localClienteId);
           }
           if (localVendedorId) {
             const realCveAtendioCol  = cotCabCols.find(c => c.toLowerCase() === 'cve_atendio');
