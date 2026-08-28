@@ -607,6 +607,11 @@ async function handleOrderInsert(data) {
             if (realCotOcCol) headerCotPairsMap.set(realCotOcCol, poVal.substring(0, 10));
           }
 
+          if (orderNumber) {
+            const realCotIdPsCol = cotCabCols.find(c => c.toLowerCase() === 'idps');
+            if (realCotIdPsCol) headerCotPairsMap.set(realCotIdPsCol, String(orderNumber).substring(0, 15));
+          }
+
           forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
           forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
           forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
@@ -714,6 +719,11 @@ async function handleOrderInsert(data) {
 
         const realPKCol = cabCols.find(c => c.toLowerCase() === 'no_pedido');
         if (realPKCol) headerPairsMap.set(realPKCol, nextFolio);
+
+        if (nextCotiza) {
+          const realCotizCol = cabCols.find(c => c.toLowerCase() === 'cotizacion' || c.toLowerCase() === 'no_cotiza');
+          if (realCotizCol) headerPairsMap.set(realCotizCol, nextCotiza);
+        }
 
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
