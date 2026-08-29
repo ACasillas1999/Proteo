@@ -22,6 +22,7 @@ const PS_FIELDS_CABECERA = [
   { field: 'TotalAmount',       type: 'erpColumn', required: false, label: 'Monto total' },
   { field: 'CalculatedSubtotal', type: 'computed',  required: false, label: 'Subtotal Calculado (TotalAmount - TotalTax)' },
   { field: 'AutoFechaHora',     type: 'autoSystem', required: false, label: 'Fecha y Hora de Captura (Se asigna automáticamente Fech_Captura y Hora_Captura con la hora actual)' },
+  { field: 'SyncCRM_Limit',     type: 'autoSync',   required: false, label: 'Estatus de Sync (Cotización) (Asigna 0 si IsCRM=1 o si Total > CotSyncImp en paramvf)' },
   { field: 'Payment',           type: 'erpColumn', required: false, label: 'Pago' },
   { field: 'PaymentType',       type: 'erpColumn', required: false, label: 'Tipo de pago' },
   { field: 'OrderType',         type: 'erpColumn', required: false, label: 'Tipo de pedido' },

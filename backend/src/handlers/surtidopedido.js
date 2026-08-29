@@ -95,7 +95,9 @@ async function sync(cambio) {
   // 4. Determinar los identificadores numéricos de estatus para PowerSales
   let statusId = 44; // default / 'SIN DEFINIR'
   if (status === 'FULLY_PICKED') {
-    statusId = 43;
+    // TEMPORAL: Se envía statusId 42 (PAYMENT_PENDING). 
+    // PARA REVERTIR AL ORIGINAL: Cambiar 'statusId = 42;' por 'statusId = 43;' (FULLY_PICKED / SURTIDO COMPLETADO).
+    statusId = 42;
   } else if (status === 'PARTIALLY_PICKED') {
     statusId = 6;
   }

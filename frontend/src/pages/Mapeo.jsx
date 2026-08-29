@@ -16,6 +16,7 @@ const TYPE_BADGE = {
   computed:   { label: 'Calculado',  color: '#f59e0b' },
   autoFixed:  { label: 'Fijo (16)',  color: '#10b981' },
   autoSystem: { label: 'Fecha/Hora', color: '#a78bfa' },
+  autoSync:   { label: 'Sync Específico', color: '#8b5cf6' },
   articuloPrice: { label: 'Precio Especial', color: '#ec4899' }
 };
 
@@ -473,6 +474,12 @@ export default function Mapeo() {
                   control = (
                     <span style={{ color: '#a78bfa', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
                       ⏰ Asignado automáticamente (Fecha y Hora actual del servidor en Fech_Captura / Hora_Captura)
+                    </span>
+                  );
+                } else if (type === 'autoSync') {
+                  control = (
+                    <span style={{ color: '#8b5cf6', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      🔄 Sync automático en cbcot (0 si IsCRM=1 o si Total &gt; CotSyncImp en paramvf, sino 1)
                     </span>
                   );
                 } else if (type === 'articuloPrice') {

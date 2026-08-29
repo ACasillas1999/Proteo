@@ -616,6 +616,23 @@ async function handleOrderInsert(data) {
           forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
           forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
 
+          // Evaluar Sync para cbcot: 0 si IsCRM === 1 o si Total > CotSyncImp en paramvf
+          let cotSyncImpLimit = 999999999;
+          try {
+            const [paramRows] = await connection.execute("SELECT CotSyncImp FROM paramvf LIMIT 1");
+            if (paramRows.length > 0 && paramRows[0].CotSyncImp !== undefined && paramRows[0].CotSyncImp !== null) {
+              cotSyncImpLimit = Number(paramRows[0].CotSyncImp);
+            }
+          } catch (pErr) {
+            console.error('[WEBHOOK] Error consultando CotSyncImp en paramvf:', pErr.message);
+          }
+
+          const isCrmVal = Number(getPath(data, 'IsCRM')) === 1;
+          const isOverLimit = totalAmountVal > cotSyncImpLimit;
+          const syncCalculatedVal = (isCrmVal || isOverLimit) ? 0 : 1;
+
+          forceColValue(headerCotPairsMap, cotCabCols, 'Sync', syncCalculatedVal);
+
           // Sensible defaults para cotizaciones
           setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha', todayStr);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Fech_Entrega', todayStr);
@@ -631,7 +648,6 @@ async function handleOrderInsert(data) {
           setIfColExists(headerCotPairsMap, cotCabCols, 'TotalFacturado', 0.0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Remision', 0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Almacen', 1);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Sync', 0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Sugar', 0);
           setIfColExists(headerCotPairsMap, cotCabCols, 'Observaciones', '');
           setIfColExists(headerCotPairsMap, cotCabCols, 'Atencion', '');
