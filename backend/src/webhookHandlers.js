@@ -452,7 +452,7 @@ async function handleOrderInsert(data) {
       if (realEstatusCol) headerPairsMap.set(realEstatusCol, 'C');
     } else if (orderTypeVal.includes('ANEXO')) {
       if (realEstatusCol) headerPairsMap.set(realEstatusCol, 'P');
-      if (realAfectarCol) headerPairsMap.set(realAfectarCol, 1);
+      if (realAfectarCol) headerPairsMap.set(realAfectarCol, 0);
     } else if (orderTypeVal.includes('NORMAL') || orderTypeVal.includes('REMISION')) {
       if (realEstatusCol) headerPairsMap.set(realEstatusCol, 'P');
     } else {
