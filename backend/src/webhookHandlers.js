@@ -627,9 +627,30 @@ async function handleOrderInsert(data) {
             console.error('[WEBHOOK] Error consultando CotSyncImp en paramvf:', pErr.message);
           }
 
-          const isCrmVal = Number(getPath(data, 'IsCRM')) === 1;
+          const findCaseInsensitive = (obj, keyName) => {
+            if (!obj || typeof obj !== 'object') return undefined;
+            const tKey = keyName.toLowerCase();
+            for (const k of Object.keys(obj)) {
+              if (k.toLowerCase() === tKey) return obj[k];
+            }
+            return undefined;
+          };
+
+          const rawIsCrm = getPath(data, 'IsCRM')
+            ?? getPath(data, 'details_promo.0.order.IsCRM')
+            ?? getPath(data, 'details_promo.0.order.IsCrm')
+            ?? findCaseInsensitive(data, 'iscrm')
+            ?? findCaseInsensitive(data.details_promo?.[0]?.order, 'iscrm');
+
+          const isCrmVal = rawIsCrm === 1 
+            || String(rawIsCrm).trim() === '1' 
+            || rawIsCrm === true 
+            || String(rawIsCrm).trim().toLowerCase() === 'true';
+
           const isOverLimit = totalAmountVal > cotSyncImpLimit;
           const syncCalculatedVal = (isCrmVal || isOverLimit) ? 0 : 1;
+
+          console.log(`[WEBHOOK] Sync evaluado para Cotización -> Folio: ${nextCotiza}, rawIsCrm: ${rawIsCrm}, isCrmVal: ${isCrmVal}, totalAmountVal: ${totalAmountVal}, cotSyncImpLimit: ${cotSyncImpLimit}, isOverLimit: ${isOverLimit} => Sync final: ${syncCalculatedVal}`);
 
           forceColValue(headerCotPairsMap, cotCabCols, 'Sync', syncCalculatedVal);
 
