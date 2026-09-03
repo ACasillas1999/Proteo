@@ -130,7 +130,7 @@ router.get('/debug-api-test', async (req, res) => {
   };
 
   try {
-    const apiRes = await axios.post('https://api.dev.powersales.cloud/api/grupoascencio/products', payload, {
+    const apiRes = await axios.post(`${process.env.PS_BASE_URL}/products`, payload, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',

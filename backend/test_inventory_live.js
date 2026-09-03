@@ -1,10 +1,9 @@
-// Script para probar GET /api/inventory (consulta en vivo maestro→sucursal vía WS)
-// Uso: node test_inventory_live.js [branch_id] [ProductId] [WarehouseId]
+require('dotenv').config();
 const http = require('http');
 const https = require('https');
 
 const HOST  = process.env.TEST_HOST  || 'localhost:3001'; // o 'endpoint.grupoascencio.com.mx' para probar el túnel real
-const TOKEN = process.env.PS_TOKEN   || '438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd';
+const TOKEN = process.env.PS_TOKEN;
 
 const branchId    = process.argv[2] || '9';
 const productId   = process.argv[3] || '';

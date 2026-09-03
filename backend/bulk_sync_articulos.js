@@ -6,10 +6,8 @@ const { getFieldMapping, getConfig } = require('./src/localdb');
 const ps = require('./src/powersales');
 const { PS_FIELDS } = require('./src/handlers/articulo');
 
-// Asegurar URL base fallback si estuviera comentada en el .env
 if (!process.env.PS_BASE_URL) {
-  process.env.PS_BASE_URL = 'https://api.dev.powersales.cloud/api/grupoascencio';
-  ps.defaults.baseURL = process.env.PS_BASE_URL;
+  throw new Error('PS_BASE_URL no está definida en el archivo .env');
 }
 
 /**

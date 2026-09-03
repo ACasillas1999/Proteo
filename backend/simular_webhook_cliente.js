@@ -1,16 +1,15 @@
-// Script para simular un Webhook de Cliente desde PowerSales a Proteo
+require('dotenv').config();
 const http = require('http');
 
 // Configuración de la petición
 const options = {
   hostname: 'localhost',
-  port: 3001,
+  port: process.env.PORT || 3001,
   path: '/api/webhooks/powersales/object-update',
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    // Token del .env
-    'Authorization': 'Bearer 438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd'
+    'Authorization': `Bearer ${process.env.PS_TOKEN}`
   }
 };
 

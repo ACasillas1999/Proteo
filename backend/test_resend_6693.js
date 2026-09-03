@@ -2,9 +2,9 @@ require('dotenv').config();
 const axios = require('axios');
 
 const ps = axios.create({
-  baseURL: 'https://api.dev.powersales.cloud/api/grupoascencio',
+  baseURL: process.env.PS_BASE_URL,
   headers: {
-    Authorization: 'Bearer 438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd',
+    Authorization: `Bearer ${process.env.PS_TOKEN}`,
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },

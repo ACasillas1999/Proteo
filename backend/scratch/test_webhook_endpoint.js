@@ -4,7 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 async function run() {
   const token = process.env.PS_TOKEN;
-  const url = 'https://api.dev.powersales.cloud/api/grupoascencio/webhooks/object-update';
+  const url = `${process.env.PS_BASE_URL}/webhooks/object-update`;
   
   console.log('Testing GET on webhook URL...');
   try {

@@ -2,8 +2,8 @@
 require('dotenv').config();
 const https = require('https');
 
-const token = process.env.PS_TOKEN || '438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd';
-const baseUrl = process.env.PS_BASE_URL || 'https://api.dev.powersales.cloud/api/grupoascencio';
+const token = process.env.PS_TOKEN;
+const baseUrl = process.env.PS_BASE_URL;
 
 const urlObj = new URL(baseUrl);
 const hostname = urlObj.hostname;

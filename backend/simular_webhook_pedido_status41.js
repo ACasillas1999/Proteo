@@ -2,7 +2,7 @@
 require('dotenv').config();
 const http = require('http');
 
-const token = process.env.PS_TOKEN || '438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd';
+const token = process.env.PS_TOKEN;
 const port = parseInt(process.env.PORT) || 3001;
 
 // Tomar argumentos de la línea de comandos
