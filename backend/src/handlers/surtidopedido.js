@@ -6,7 +6,7 @@ const { getFieldMapping, getConfig, localQuery } = require('../localdb');
 async function sync(cambio) {
   const { clave_registro, campos_modificados } = cambio;
   const status = campos_modificados; // 'FULLY_PICKED' o 'PARTIALLY_PICKED'
-  
+
   if (!status) {
     console.log(`[SYNC surtidopedido] Sin estatus en campos_modificados para Folio: ${clave_registro}`);
     return null;
@@ -15,7 +15,7 @@ async function sync(cambio) {
   // 1. Obtener la tabla de cabecera y el mapeo de campos dinámicos
   const cabTable = await getConfig('pedido_cabecera_table', 'cbpedvta');
   const fieldMap = await getFieldMapping('pedido_cabecera');
-  
+
   // Buscar qué columnas del ERP están mapeadas para 'Id' y 'OrderNumber'
   const erpIdCol = fieldMap['Id'];
   const erpOrderNumCol = fieldMap['OrderNumber'];
@@ -64,9 +64,9 @@ async function sync(cambio) {
 
       const matchById = orderPsId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId));
       const matchByNum = orderNumberIpad && (String(orderNum).trim() === String(orderNumberIpad).trim());
-      const matchByClave = (String(orderId) === String(clave_registro)) || 
-                           (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
-                           (poNum && String(poNum).trim() === String(clave_registro).trim());
+      const matchByClave = (String(orderId) === String(clave_registro)) ||
+        (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
+        (poNum && String(poNum).trim() === String(clave_registro).trim());
 
       if (matchById || matchByNum || matchByClave) {
         if (!orderPsId && orderId) {
@@ -97,7 +97,7 @@ async function sync(cambio) {
   if (status === 'FULLY_PICKED') {
     // TEMPORAL: Se envía statusId 42 (PAYMENT_PENDING). 
     // PARA REVERTIR AL ORIGINAL: Cambiar 'statusId = 42;' por 'statusId = 43;' (FULLY_PICKED / SURTIDO COMPLETADO).
-    statusId = 42;
+    statusId = 43;
   } else if (status === 'PARTIALLY_PICKED') {
     statusId = 6;
   }
@@ -122,8 +122,8 @@ async function sync(cambio) {
     if (!sku) continue;
 
     // Buscar la partida correspondiente en el webhook original para preservar IDs sin duplicar
-    const origIndex = remainingDetails.findIndex(d => 
-      String(d.ProductId).trim() === String(sku).trim() || 
+    const origIndex = remainingDetails.findIndex(d =>
+      String(d.ProductId).trim() === String(sku).trim() ||
       String(d.ProductCode).trim() === String(sku).trim()
     );
 
@@ -175,7 +175,7 @@ async function sync(cambio) {
   };
 
   console.log(`[SYNC surtidopedido] Enviando estatus '${status}' (StatusId: ${statusId}) con ${ordersDetails.length} artículos para Pedido PS ID: ${orderPsId} (Folio ERP: ${clave_registro}, OrderNumber: ${orderNumberIpad})`);
-  
+
   // PowerSales: POST /orders con el payload de actualización de estatus de surtido
   const response = await ps.post('/orders', { data: payload });
 
