@@ -1007,14 +1007,38 @@ async function handleOrderInsert(data) {
       }
 
       // Renglones del pedido
-      if (details.length > 0 && detTable) {
+      let detailsToInsert = details;
+
+      // Si no vienen renglones en el payload actual (ej. webhook de cambio de estatus 38 sin details), pero existe una cotización vinculada en dtcot:
+      if (detailsToInsert.length === 0 && nextCotiza && cotDetTable && (await tableExists(cotDetTable))) {
+        try {
+          const [cotDetRows] = await connection.execute(
+            `SELECT * FROM \`${cotDetTable}\` WHERE N_Cotizacion = ? ORDER BY Partida ASC`,
+            [nextCotiza]
+          );
+          if (cotDetRows.length > 0) {
+            console.log(`[WEBHOOK] Copiando ${cotDetRows.length} renglón(es) guardados en dtcot (No_Cotiza: ${nextCotiza}) hacia '${detTable}'...`);
+            detailsToInsert = cotDetRows.map(r => ({
+              ProductId: r.Cve_Art || r.Cve_Articulo || r.Clave_Articulo,
+              ProductCode: r.Cve_Art || r.Cve_Articulo || r.Clave_Articulo,
+              QtyOrdered: r.Cant_Pedida || r.Cant_Facturar || 0,
+              Price: r.Costo_Unitario || 0,
+              Discount1: r.Descuento || 0
+            }));
+          }
+        } catch (copyErr) {
+          console.error('[WEBHOOK] Error consultando dtcot para poblar renglones del pedido:', copyErr.message);
+        }
+      }
+
+      if (detailsToInsert.length > 0 && detTable) {
         if (!(await tableExists(detTable))) {
           throw new Error(`Tabla de renglones '${detTable}' no existe`);
         }
         const detCols = await validColumns(detTable);
         let partidaIndex = 1;
 
-        for (const item of details) {
+        for (const item of detailsToInsert) {
           const rowPairsMap = new Map();
 
           const realFKCol = detCols.find(c => c.toLowerCase() === 'no_pedido');
@@ -1060,7 +1084,7 @@ async function handleOrderInsert(data) {
             await connection.execute(`INSERT IGNORE INTO \`${detTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
           }
         }
-        console.log(`[WEBHOOK] Pedido ${orderNumber}: ${details.length} renglón(es) insertados en '${detTable}'`);
+        console.log(`[WEBHOOK] Pedido ${orderNumber}: ${detailsToInsert.length} renglón(es) insertados en '${detTable}'`);
       }
 
       await connection.commit();

@@ -5,11 +5,11 @@ const { handleOrderInsert } = require('../src/webhookHandlers');
 
 async function runTest() {
   console.log('====================================================');
-  console.log('  PRUEBA DE FLUJO DE STATUSID: 11 Y 38 EN WEBHOOKS  ');
+  console.log('  PRUEBA COMPLETA DE COTIZACIÓN Y PEDIDO (11 Y 38) ');
   console.log('====================================================\n');
 
   const testOrderNumber = 'TS_' + Date.now().toString().slice(-8);
-  console.log(`📌 Número de orden de prueba: ${testOrderNumber}\n`);
+  console.log(`📌 Número de orden de prueba 1: ${testOrderNumber}\n`);
 
   try {
     // 1. Enviar Webhook con StatusId 11 (Cotización)
@@ -33,7 +33,6 @@ async function runTest() {
 
     await handleOrderInsert(payloadStatus11);
 
-    // Verificar en db si existe en cbcot y si NO existe en cbpedvta
     const [cotRows11] = await query('SELECT * FROM cbcot WHERE IDPs = ?', [testOrderNumber]);
     const [pedRows11] = await query('SELECT * FROM cbpedvta WHERE No_Pedido = ? OR Cotizacion = ?', [testOrderNumber, cotRows11[0]?.No_Cotiza || -1]);
 
@@ -58,8 +57,34 @@ async function runTest() {
     console.log(`   ✓ Total actualizado en cbcot: Total=${cotRows11Upd[0]?.Total} (Esperado: 2320)`);
     console.log('');
 
+    // 3. Enviar Webhook con StatusId 38 (Cotización Aprobada -> Crear Pedido y Detalle)
+    console.log('--- 3. Probando aprobación con StatusId: 38 (Creación de Pedido y Detalle) ---');
+    const payloadStatus38 = {
+      ...payloadStatus11Update,
+      StatusId: 38,
+      StatusName: 'COTIZACION APROBADA'
+    };
+
+    await handleOrderInsert(payloadStatus38);
+
+    const [pedRows38] = await query('SELECT No_Pedido, Cotizacion, Distribuido, Total FROM cbpedvta WHERE Cotizacion = ?', [noCotizaGenerado]);
+    console.log(`   ✓ Pedido en cbpedvta: ${pedRows38.length > 0 ? 'CREADO EXITOSAMENTE' : '❌ NO CREADO'}`);
+    if (pedRows38.length > 0) {
+      const createdNoPedido = pedRows38[0].No_Pedido;
+      console.log(`     -> No_Pedido: #${createdNoPedido} | Cotizacion asociada: #${pedRows38[0].Cotizacion} | Total: ${pedRows38[0].Total}`);
+
+      const [dtPedRows] = await query('SELECT No_Pedido, Partida, Cve_Articulo, Cant_Pedida, Costo_Unitario FROM dtpedvta WHERE No_Pedido = ?', [createdNoPedido]);
+      console.log(`   ✓ Renglones en dtpedvta: ${dtPedRows.length} renglón(es) insertados`);
+      if (dtPedRows.length > 0) {
+        console.table(dtPedRows);
+      } else {
+        console.log('     ❌ ERROR: Renglones NO insertados en dtpedvta!');
+      }
+    }
+    console.log('');
+
     // 4. Probando envío directo con StatusId: 38 (sin pasar por status 11 previo)
-    console.log('--- 4. Probando envío directo con StatusId: 38 con cotización nueva ---');
+    console.log('--- 4. Probando envío directo con StatusId: 38 (Creación de Cotización + Pedido + Detalle) ---');
     const testDirect38OrderNumber = 'TS_DIR_' + Date.now().toString().slice(-6);
     const payloadDirect38 = {
       OrderNumber: testDirect38OrderNumber,
@@ -85,6 +110,17 @@ async function runTest() {
 
     console.log(`   ✓ Cotización en cbcot creada/actualizada: ${cotDirRows.length > 0 ? 'SÍ (No_Cotiza: ' + cotDirRows[0].No_Cotiza + ', Total: ' + cotDirRows[0].Total + ')' : '❌ NO'}`);
     console.log(`   ✓ Pedido en cbpedvta creado: ${pedDirRows.length > 0 ? 'SÍ (No_Pedido: ' + pedDirRows[0].No_Pedido + ', Cotizacion: ' + pedDirRows[0].Cotizacion + ', Total: ' + pedDirRows[0].Total + ')' : '❌ NO'}`);
+
+    if (pedDirRows.length > 0) {
+      const createdDirectNoPedido = pedDirRows[0].No_Pedido;
+      const [dtDirectPedRows] = await query('SELECT No_Pedido, Partida, Cve_Articulo, Cant_Pedida, Costo_Unitario FROM dtpedvta WHERE No_Pedido = ?', [createdDirectNoPedido]);
+      console.log(`   ✓ Renglones en dtpedvta (Directo 38): ${dtDirectPedRows.length} renglón(es) insertados`);
+      if (dtDirectPedRows.length > 0) {
+        console.table(dtDirectPedRows);
+      } else {
+        console.log('     ❌ ERROR: Renglones NO insertados en dtpedvta para envío directo!');
+      }
+    }
 
     console.log('\n====================================================');
     console.log('📊 PRUEBA COMPLETADA SATISFACTORIAMENTE');
