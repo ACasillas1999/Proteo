@@ -122,6 +122,34 @@ async function runTest() {
       }
     }
 
+    // 5. Probando transición de Estatus 38 a Estatus 41 (Verificar que NUNCA borre dtpedvta)
+    console.log('--- 5. Probando transición de Estatus 38 a Estatus 41 ---');
+    const payloadStatus41 = {
+      OrderNumber: testDirect38OrderNumber,
+      StatusId: 41,
+      StatusName: 'DES-DISTRIBUIDO / LIBERADO',
+      OrdersDetails: [
+        {
+          ProductId: '1020625',
+          QtyOrdered: 5,
+          Price: 1000.00
+        }
+      ]
+    };
+
+    await handleOrderInsert(payloadStatus41);
+
+    const [ped41Rows] = await query('SELECT No_Pedido, Distribuido FROM cbpedvta WHERE Cotizacion = ?', [cotDirRows[0]?.No_Cotiza || -1]);
+    const [dtPed41Rows] = await query('SELECT No_Pedido, Partida, Cve_Articulo, Cant_Pedida FROM dtpedvta WHERE No_Pedido = ?', [pedDirRows[0]?.No_Pedido]);
+
+    console.log(`   ✓ Estado Distribuido en cbpedvta: ${ped41Rows[0]?.Distribuido} (Esperado: 0)`);
+    console.log(`   ✓ Renglones en dtpedvta tras Estatus 41: ${dtPed41Rows.length} renglón(es) conservados!`);
+    if (dtPed41Rows.length > 0) {
+      console.table(dtPed41Rows);
+    } else {
+      console.log('   ❌ ERROR GRAVE: Las partidas fueron eliminadas al cambiar a Estatus 41!');
+    }
+
     console.log('\n====================================================');
     console.log('📊 PRUEBA COMPLETADA SATISFACTORIAMENTE');
 

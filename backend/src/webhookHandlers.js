@@ -238,6 +238,21 @@ async function handleOrderInsert(data) {
 
     const cabCols = await validColumns(cabTable);
 
+    // Helpers locales para agregar/forzar columnas por defecto si no están mapeadas
+    const setIfColExists = (map, cols, colName, value) => {
+      const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
+      if (realCol && !map.has(realCol)) {
+        map.set(realCol, value);
+      }
+    };
+
+    const forceColValue = (map, cols, colName, value) => {
+      const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
+      if (realCol) {
+        map.set(realCol, value);
+      }
+    };
+
     // 1. Verificar si el pedido ya existe en el ERP
     let exists = false;
     let existingNoPedido = null;
@@ -308,12 +323,15 @@ async function handleOrderInsert(data) {
         }
       }
 
-      const detailsArr = Array.isArray(data.details) ? data.details : [];
+      const detailsArr = Array.isArray(data.details) 
+        ? data.details 
+        : (Array.isArray(data.OrdersDetails) ? data.OrdersDetails : []);
+
       const totalAmountVal = Number(data.TotalAmount || 0);
       const calculatedSubtotal = Number(data.SubTotalAmount || (totalAmountVal > 0 ? totalAmountVal / 1.16 : 0));
 
-      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
-      if (statusIdNum !== 11 && detailsArr.length > 0) {
+      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11 NI STATUS 41)
+      if (statusIdNum !== 11 && statusIdNum !== 41 && detailsArr.length > 0) {
         const realSubtotalCol = cabCols.find(c => c.toLowerCase() === 'subtotal');
         const realTotalCol = cabCols.find(c => c.toLowerCase() === 'total');
         const updates = [];
@@ -334,7 +352,7 @@ async function handleOrderInsert(data) {
         }
 
         // Refrescar renglones en dtpedvta si vienen details
-        if (detailsArr.length > 0 && detTable && (await tableExists(detTable))) {
+        if (detTable && (await tableExists(detTable))) {
           console.log(`[WEBHOOK] Refrescando ${detailsArr.length} renglón(es) en '${detTable}' para No_Pedido: ${existingNoPedido}...`);
           await query(`DELETE FROM \`${detTable}\` WHERE No_Pedido = ?`, [existingNoPedido]);
 
@@ -362,8 +380,15 @@ async function handleOrderInsert(data) {
               rowPairsMap.set(realCol, val);
             }
 
+            const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
+            const realCveArtCol = detCols.find(c => c.toLowerCase() === 'cve_articulo' || c.toLowerCase() === 'cve_art');
+            if (realCveArtCol && itemSku) rowPairsMap.set(realCveArtCol, itemSku);
+
+            setIfColExists(rowPairsMap, detCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
+            setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.Price || 0));
+            setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
             setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
             setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
 
@@ -583,20 +608,7 @@ async function handleOrderInsert(data) {
       if (realNoOcCol) headerPairsMap.set(realNoOcCol, poVal.substring(0, 11));
     }
 
-    // 5. Helper local para agregar columnas por defecto si no están mapeadas
-    const setIfColExists = (map, cols, colName, value) => {
-      const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
-      if (realCol && !map.has(realCol)) {
-        map.set(realCol, value);
-      }
-    };
 
-    const forceColValue = (map, cols, colName, value) => {
-      const realCol = cols.find(c => c.toLowerCase() === colName.toLowerCase());
-      if (realCol) {
-        map.set(realCol, value);
-      }
-    };
 
     const todayStr = new Date().toISOString().split('T')[0];
     const timeStr  = new Date().toTimeString().split(' ')[0];
