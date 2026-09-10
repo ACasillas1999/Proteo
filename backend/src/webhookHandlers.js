@@ -279,52 +279,65 @@ async function handleOrderInsert(data) {
       }
     }
 
-    // 2. Si el pedido ya existe, actualizamos la columna Distribuido únicamente si StatusId es 41 (pasa a 0) o 11 (pasa a 1), o Estatus_Pedido a 'C' si es 8 (CANCELLED)
+    // 2. Si el pedido ya existe, actualizamos estatus, montos y renglones (si no es Cotización StatusId 11)
     if (exists) {
-      console.log(`[WEBHOOK] Pedido ${orderNumber} ya existe con No_Pedido: ${existingNoPedido}.`);
-      if (data.StatusId !== undefined || data.StatusName !== undefined) {
-        const statusIdNum = parseInt(data.StatusId);
-        const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
+      console.log(`[WEBHOOK] Pedido/Cotización ${orderNumber} ya existe con No_Pedido: ${existingNoPedido}. Procesando actualización...`);
+      const statusIdNum = parseInt(data.StatusId);
+      const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
 
+      // A. Actualizar Estatus / Distribuido en Pedido Cabecera (solo para estatus de pedido, no Status 11)
+      if (statusIdNum !== 11) {
         if (statusIdNum === 8 || statusNameVal.includes('CANCEL')) {
           console.log(`[WEBHOOK] StatusId es 8 / Cancelado. Actualizando 'Estatus_Pedido' a 'C' en No_Pedido: ${existingNoPedido}`);
           const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
           if (realEstatusCol) {
-            await query(
-              `UPDATE \`${cabTable}\` SET \`${realEstatusCol}\` = 'C' WHERE No_Pedido = ?`,
-              [existingNoPedido]
-            );
+            await query(`UPDATE \`${cabTable}\` SET \`${realEstatusCol}\` = 'C' WHERE No_Pedido = ?`, [existingNoPedido]);
           }
         } else if (statusIdNum === 41) {
           console.log(`[WEBHOOK] StatusId es 41. Actualizando 'Distribuido' a 0 en No_Pedido: ${existingNoPedido}`);
           const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
           if (realDistCol) {
-            await query(
-              `UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`,
-              [0, existingNoPedido]
-            );
+            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [0, existingNoPedido]);
           }
-        } else if (statusIdNum === 11) {
-          console.log(`[WEBHOOK] StatusId es 11. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
+        } else if (statusIdNum === 38) {
+          console.log(`[WEBHOOK] StatusId es 38. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
           const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
           if (realDistCol) {
-            await query(
-              `UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`,
-              [1, existingNoPedido]
-            );
+            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [1, existingNoPedido]);
           }
         }
       }
 
-      // Si el pedido ya existe pero NO tiene renglones en la tabla de detalles y este webhook sí incluye renglones, insertarlos
       const detailsArr = Array.isArray(data.details) ? data.details : [];
-      if (detailsArr.length > 0 && detTable && (await tableExists(detTable))) {
-        const [existingDetRows] = await query(
-          `SELECT COUNT(*) AS total FROM \`${detTable}\` WHERE No_Pedido = ?`,
-          [existingNoPedido]
-        );
-        if (existingDetRows[0].total === 0) {
-          console.log(`[WEBHOOK] Pedido ${orderNumber} ya existía pero tenía 0 renglones. Insertando ${detailsArr.length} renglón(es) en '${detTable}'...`);
+      const totalAmountVal = Number(data.TotalAmount || 0);
+      const calculatedSubtotal = Number(data.SubTotalAmount || (totalAmountVal > 0 ? totalAmountVal / 1.16 : 0));
+
+      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
+      if (statusIdNum !== 11 && detailsArr.length > 0) {
+        const realSubtotalCol = cabCols.find(c => c.toLowerCase() === 'subtotal');
+        const realTotalCol = cabCols.find(c => c.toLowerCase() === 'total');
+        const updates = [];
+        const updateParams = [];
+
+        if (realSubtotalCol && calculatedSubtotal > 0) {
+          updates.push(`\`${realSubtotalCol}\` = ?`);
+          updateParams.push(calculatedSubtotal);
+        }
+        if (realTotalCol && totalAmountVal > 0) {
+          updates.push(`\`${realTotalCol}\` = ?`);
+          updateParams.push(totalAmountVal);
+        }
+        if (updates.length > 0) {
+          updateParams.push(existingNoPedido);
+          await query(`UPDATE \`${cabTable}\` SET ${updates.join(', ')} WHERE No_Pedido = ?`, updateParams);
+          console.log(`[WEBHOOK] Totales actualizados en '${cabTable}' para No_Pedido: ${existingNoPedido} (Subtotal: ${calculatedSubtotal}, Total: ${totalAmountVal})`);
+        }
+
+        // Refrescar renglones en dtpedvta si vienen details
+        if (detailsArr.length > 0 && detTable && (await tableExists(detTable))) {
+          console.log(`[WEBHOOK] Refrescando ${detailsArr.length} renglón(es) en '${detTable}' para No_Pedido: ${existingNoPedido}...`);
+          await query(`DELETE FROM \`${detTable}\` WHERE No_Pedido = ?`, [existingNoPedido]);
+
           const detCols = await validColumns(detTable);
           let partidaIndex = 1;
           const todayStr = new Date().toISOString().split('T')[0];
@@ -363,6 +376,94 @@ async function handleOrderInsert(data) {
               await query(`INSERT INTO \`${detTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
             }
           }
+        }
+      }
+
+      // C. Actualizar o refrescar Cotización en cbcot y dtcot (si aplica)
+      if (cotCabTable && (await tableExists(cotCabTable))) {
+        try {
+          const [cotExisting] = await query(
+            `SELECT No_Cotiza FROM \`${cotCabTable}\` WHERE IDPs = ? OR IDPs = ? LIMIT 1`,
+            [String(orderNumber), String(existingNoPedido)]
+          );
+
+          if (cotExisting.length > 0) {
+            const existingNoCotiza = cotExisting[0].No_Cotiza;
+            console.log(`[WEBHOOK] Cotización existente encontrada en '${cotCabTable}' (No_Cotiza: ${existingNoCotiza}). Refrescando datos...`);
+
+            const cotCabCols = await validColumns(cotCabTable);
+            const cotSubCol = cotCabCols.find(c => c.toLowerCase() === 'subtotal');
+            const cotTotCol = cotCabCols.find(c => c.toLowerCase() === 'total');
+            const cotUpdates = [];
+            const cotUpdateParams = [];
+
+            if (cotSubCol && calculatedSubtotal > 0) {
+              cotUpdates.push(`\`${cotSubCol}\` = ?`);
+              cotUpdateParams.push(calculatedSubtotal);
+            }
+            if (cotTotCol && totalAmountVal > 0) {
+              cotUpdates.push(`\`${cotTotCol}\` = ?`);
+              cotUpdateParams.push(totalAmountVal);
+            }
+
+            if (cotUpdates.length > 0) {
+              cotUpdateParams.push(existingNoCotiza);
+              await query(`UPDATE \`${cotCabTable}\` SET ${cotUpdates.join(', ')} WHERE No_Cotiza = ?`, cotUpdateParams);
+            }
+
+            // Refrescar renglones en dtcot
+            if (detailsArr.length > 0 && cotDetTable && (await tableExists(cotDetTable))) {
+              await query(`DELETE FROM \`${cotDetTable}\` WHERE N_Cotizacion = ?`, [existingNoCotiza]);
+              const cotDetCols = await validColumns(cotDetTable);
+              let cotPartidaIndex = 1;
+              const todayStr = new Date().toISOString().split('T')[0];
+              const timeStr = new Date().toTimeString().split(' ')[0];
+
+              for (const item of detailsArr) {
+                const rowPairsMap = new Map();
+                const realCotFKCol = cotDetCols.find(c => c.toLowerCase() === 'n_cotizacion');
+                if (realCotFKCol) rowPairsMap.set(realCotFKCol, existingNoCotiza);
+
+                const realCotPartidaCol = cotDetCols.find(c => c.toLowerCase() === 'partida');
+                if (realCotPartidaCol) rowPairsMap.set(realCotPartidaCol, cotPartidaIndex++);
+
+                for (const def of PS_FIELDS_DETALLE) {
+                  const erpCol = fieldMapCotDet[def.field];
+                  if (!erpCol) continue;
+                  const realCol = cotDetCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+                  if (!realCol || realCol === realCotFKCol || realCol === realCotPartidaCol) continue;
+
+                  const val = def.field === 'OrderNumber' ? existingNoCotiza : item[def.field];
+                  if (val === undefined) continue;
+                  rowPairsMap.set(realCol, val);
+                }
+
+                const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || '').trim();
+                const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
+                if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
+
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
+                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
+                setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
+
+                const rowPairs = Array.from(rowPairsMap.entries());
+                if (rowPairs.length > 0) {
+                  const rCols = rowPairs.map(([c]) => c);
+                  const rVals = rowPairs.map(([, v]) => v);
+                  const rPlaceholders = rCols.map(() => '?').join(', ');
+                  const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
+                  await query(`INSERT IGNORE INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+                }
+              }
+              console.log(`[WEBHOOK] Renglones de cotización refrescados para No_Cotiza: ${existingNoCotiza}`);
+            }
+          }
+        } catch (cotUpdErr) {
+          console.error('[WEBHOOK] Error al actualizar cotización existente:', cotUpdErr.message);
         }
       }
 
@@ -551,199 +652,303 @@ async function handleOrderInsert(data) {
       const todayStr = new Date().toISOString().split('T')[0];
       const timeStr = new Date().toTimeString().split(' ')[0];
 
-      // A. INSERTAR COTIZACIÓN (si StatusId es 11)
+      // A. PROCESAR COTIZACIÓN (si StatusId es 11)
       let nextCotiza = null;
-      if (parseInt(data.StatusId) === 11 && cotCabTable && (await tableExists(cotCabTable))) {
-        const [ctrlCotRows] = await connection.execute("SELECT Consec_Num FROM ctrlcons WHERE Tipo = 'COT' FOR UPDATE");
-        if (ctrlCotRows.length > 0) {
-          nextCotiza = ctrlCotRows[0].Consec_Num + 1;
+      if (statusIdVal === 11) {
+        if (cotCabTable && (await tableExists(cotCabTable))) {
+          // Verificar si ya existía en cbcot por IDPs
+          const [cotExistingRows] = await connection.execute(
+            `SELECT No_Cotiza FROM \`${cotCabTable}\` WHERE IDPs = ? OR IDPs = ? LIMIT 1`,
+            [String(orderNumber), String(data.Id || '')]
+          );
 
-          const cotCabCols = await validColumns(cotCabTable);
-          const headerCotPairsMap = new Map();
+          if (cotExistingRows.length > 0) {
+            nextCotiza = cotExistingRows[0].No_Cotiza;
+            console.log(`[WEBHOOK] Cotización previa encontrada en '${cotCabTable}' (No_Cotiza: ${nextCotiza}). Actualizando...`);
 
-          // Consecutivo en pk
-          const realPKCotCol = cotCabCols.find(c => c.toLowerCase() === 'no_cotiza');
-          if (realPKCotCol) headerCotPairsMap.set(realPKCotCol, nextCotiza);
+            const cotCabCols = await validColumns(cotCabTable);
+            const cotSubCol = cotCabCols.find(c => c.toLowerCase() === 'subtotal');
+            const cotTotCol = cotCabCols.find(c => c.toLowerCase() === 'total');
+            const cotUpdates = [];
+            const cotUpdateParams = [];
 
-          // Mapeos definidos por el usuario
-          for (const def of PS_FIELDS_CABECERA) {
-            const erpCol = fieldMapCotCab[def.field];
-            if (!erpCol) continue;
-            const realCol = cotCabCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
-            if (!realCol || realCol === realPKCotCol) continue;
-
-            let val = getPath(data, def.field);
-            if (val === undefined) continue;
-
-            if (realCol.toLowerCase() === 'cond_pago' && typeof val === 'string') {
-              const upperVal = val.toUpperCase().trim();
-              if (upperVal === 'CONTADO') val = 'CONT';
-              else if (upperVal === 'CREDITO') val = 'CRE';
+            if (cotSubCol && calculatedSubtotal > 0) {
+              cotUpdates.push(`\`${cotSubCol}\` = ?`);
+              cotUpdateParams.push(calculatedSubtotal);
             }
-            if (['cve_atendio', 'cve_vendedor', 'cotizador', 'asesor'].includes(realCol.toLowerCase()) && val !== null && val !== undefined) {
-              val = String(val).substring(0, 6);
+            if (cotTotCol && totalAmountVal > 0) {
+              cotUpdates.push(`\`${cotTotCol}\` = ?`);
+              cotUpdateParams.push(totalAmountVal);
             }
-            headerCotPairsMap.set(realCol, val);
-          }
 
-          // Inyecciones manuales para Cotización
-          if (localClienteId) {
-            const erpClientCol = fieldMapCotCab['CustomerId.CustomerNumber'] || fieldMapCotCab['CustomerId.Id'] || 'Cve_Cte';
-            const realClientCol = cotCabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase())
-              || cotCabCols.find(c => ['cve_cte', 'cve_cliente', 'cliente'].includes(c.toLowerCase()));
-            if (realClientCol) headerCotPairsMap.set(realClientCol, localClienteId);
-          }
-          if (localVendedorId) {
-            const realCveAtendioCol  = cotCabCols.find(c => c.toLowerCase() === 'cve_atendio');
-            const realCveVendedorCol = cotCabCols.find(c => c.toLowerCase() === 'cve_vendedor');
-            const realCotizadorCol   = cotCabCols.find(c => c.toLowerCase() === 'cotizador');
-            if (realCveAtendioCol)  headerCotPairsMap.set(realCveAtendioCol, localVendedorId);
-            if (realCveVendedorCol) headerCotPairsMap.set(realCveVendedorCol, localVendedorId);
-            if (realCotizadorCol)   headerCotPairsMap.set(realCotizadorCol, localVendedorId);
-          }
-
-          if (poVal) {
-            const realCotOcCol = cotCabCols.find(c => c.toLowerCase() === 'oc' || c.toLowerCase() === 'no_oc');
-            if (realCotOcCol) headerCotPairsMap.set(realCotOcCol, poVal.substring(0, 10));
-          }
-
-          if (orderNumber) {
-            const realCotIdPsCol = cotCabCols.find(c => c.toLowerCase() === 'idps');
-            if (realCotIdPsCol) headerCotPairsMap.set(realCotIdPsCol, String(orderNumber).substring(0, 15));
-          }
-
-          forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
-          forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
-          forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
-
-          // Evaluar Sync para cbcot: 0 si IsCRM === 1 o si Total > CotSyncImp en paramvf
-          let cotSyncImpLimit = 999999999;
-          try {
-            const [paramRows] = await connection.execute("SELECT CotSyncImp FROM paramvf LIMIT 1");
-            if (paramRows.length > 0 && paramRows[0].CotSyncImp !== undefined && paramRows[0].CotSyncImp !== null) {
-              cotSyncImpLimit = Number(paramRows[0].CotSyncImp);
+            if (cotUpdates.length > 0) {
+              cotUpdateParams.push(nextCotiza);
+              await connection.execute(`UPDATE \`${cotCabTable}\` SET ${cotUpdates.join(', ')} WHERE No_Cotiza = ?`, cotUpdateParams);
             }
-          } catch (pErr) {
-            console.error('[WEBHOOK] Error consultando CotSyncImp en paramvf:', pErr.message);
-          }
 
-          const findCaseInsensitive = (obj, keyName) => {
-            if (!obj || typeof obj !== 'object') return undefined;
-            const tKey = keyName.toLowerCase();
-            for (const k of Object.keys(obj)) {
-              if (k.toLowerCase() === tKey) return obj[k];
+            if (details.length > 0 && cotDetTable && (await tableExists(cotDetTable))) {
+              await connection.execute(`DELETE FROM \`${cotDetTable}\` WHERE N_Cotizacion = ?`, [nextCotiza]);
+              const cotDetCols = await validColumns(cotDetTable);
+              let cotPartidaIndex = 1;
+
+              for (const item of details) {
+                const rowPairsMap = new Map();
+                const realCotFKCol = cotDetCols.find(c => c.toLowerCase() === 'n_cotizacion');
+                if (realCotFKCol) rowPairsMap.set(realCotFKCol, nextCotiza);
+
+                const realCotPartidaCol = cotDetCols.find(c => c.toLowerCase() === 'partida');
+                if (realCotPartidaCol) rowPairsMap.set(realCotPartidaCol, cotPartidaIndex++);
+
+                for (const def of PS_FIELDS_DETALLE) {
+                  const erpCol = fieldMapCotDet[def.field];
+                  if (!erpCol) continue;
+                  const realCol = cotDetCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+                  if (!realCol || realCol === realCotFKCol || realCol === realCotPartidaCol) continue;
+
+                  const val = def.field === 'OrderNumber' ? (nextCotiza || orderNumber) : item[def.field];
+                  if (val === undefined) continue;
+                  rowPairsMap.set(realCol, val);
+                }
+
+                const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
+                const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
+                if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
+
+                const precioEspecialVal = (itemSku ? precioEspecialMap.get(itemSku.toLowerCase()) : undefined) ?? 0.0;
+
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
+                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
+                setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
+                setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
+
+                const rowPairs = Array.from(rowPairsMap.entries());
+                if (rowPairs.length > 0) {
+                  const rCols = rowPairs.map(([c]) => c);
+                  const rVals = rowPairs.map(([, v]) => v);
+                  const rPlaceholders = rCols.map(() => '?').join(', ');
+                  const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
+                  await connection.execute(`INSERT IGNORE INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+                }
+              }
             }
-            return undefined;
-          };
+          } else {
+            // INSERTAR NUEVA COTIZACIÓN
+            const [ctrlCotRows] = await connection.execute("SELECT Consec_Num FROM ctrlcons WHERE Tipo = 'COT' FOR UPDATE");
+            if (ctrlCotRows.length > 0) {
+              nextCotiza = ctrlCotRows[0].Consec_Num + 1;
 
-          const rawIsCrm = getPath(data, 'IsCRM')
-            ?? getPath(data, 'details_promo.0.order.IsCRM')
-            ?? getPath(data, 'details_promo.0.order.IsCrm')
-            ?? findCaseInsensitive(data, 'iscrm')
-            ?? findCaseInsensitive(data.details_promo?.[0]?.order, 'iscrm');
+              const cotCabCols = await validColumns(cotCabTable);
+              const headerCotPairsMap = new Map();
 
-          const isCrmVal = rawIsCrm === 1 
-            || String(rawIsCrm).trim() === '1' 
-            || rawIsCrm === true 
-            || String(rawIsCrm).trim().toLowerCase() === 'true';
+              const realPKCotCol = cotCabCols.find(c => c.toLowerCase() === 'no_cotiza');
+              if (realPKCotCol) headerCotPairsMap.set(realPKCotCol, nextCotiza);
 
-          const isOverLimit = totalAmountVal > cotSyncImpLimit;
-          const syncCalculatedVal = (isCrmVal || isOverLimit) ? 0 : 1;
-
-          console.log(`[WEBHOOK] Sync evaluado para Cotización -> Folio: ${nextCotiza}, rawIsCrm: ${rawIsCrm}, isCrmVal: ${isCrmVal}, totalAmountVal: ${totalAmountVal}, cotSyncImpLimit: ${cotSyncImpLimit}, isOverLimit: ${isOverLimit} => Sync final: ${syncCalculatedVal}`);
-
-          forceColValue(headerCotPairsMap, cotCabCols, 'Sync', syncCalculatedVal);
-
-          // Sensible defaults para cotizaciones
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha', todayStr);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Fech_Entrega', todayStr);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'FechaProbableCierre', todayStr);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha_Captura', todayStr);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Hora_Captura', timeStr);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Moneda', 1);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'TC', 1.0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Contacto', 0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Dias_Credito', 0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Aumento_Precio', 0.0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Descto_Porcentaje', 0.0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'TotalFacturado', 0.0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Remision', 0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Almacen', 1);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Sugar', 0);
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Observaciones', '');
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Atencion', '');
-          setIfColExists(headerCotPairsMap, cotCabCols, 'OC', '');
-          setIfColExists(headerCotPairsMap, cotCabCols, 'IdSugar', '');
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Asesor', branchName.substring(0, 6));
-          setIfColExists(headerCotPairsMap, cotCabCols, 'AsignoAsesor', branchName.substring(0, 6));
-          setIfColExists(headerCotPairsMap, cotCabCols, 'Proyecto', 'NA');
-          setIfColExists(headerCotPairsMap, cotCabCols, 'TipoProducto', '');
-
-          const cotCols = Array.from(headerCotPairsMap.keys());
-          const cotVals = Array.from(headerCotPairsMap.values());
-          const cotPlaceholders = cotCols.map(() => '?').join(', ');
-          const cotColsSql = cotCols.map(c => `\`${c}\``).join(', ');
-
-          await connection.execute(`INSERT INTO \`${cotCabTable}\` (${cotColsSql}) VALUES (${cotPlaceholders})`, cotVals);
-          await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'COT'", [nextCotiza]);
-          console.log(`[WEBHOOK] Cotización insertada con Folio (No_Cotiza): ${nextCotiza}`);
-
-          // Renglones de cotización
-          if (details.length > 0 && cotDetTable && (await tableExists(cotDetTable))) {
-            const cotDetCols = await validColumns(cotDetTable);
-            let cotPartidaIndex = 1;
-            for (const item of details) {
-              const rowPairsMap = new Map();
-
-              const realCotFKCol = cotDetCols.find(c => c.toLowerCase() === 'n_cotizacion');
-              if (realCotFKCol) rowPairsMap.set(realCotFKCol, nextCotiza);
-
-              const realCotPartidaCol = cotDetCols.find(c => c.toLowerCase() === 'partida');
-              if (realCotPartidaCol) rowPairsMap.set(realCotPartidaCol, cotPartidaIndex++);
-
-              for (const def of PS_FIELDS_DETALLE) {
-                const erpCol = fieldMapCotDet[def.field];
+              for (const def of PS_FIELDS_CABECERA) {
+                const erpCol = fieldMapCotCab[def.field];
                 if (!erpCol) continue;
-                const realCol = cotDetCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
-                if (!realCol || realCol === realCotFKCol || realCol === realCotPartidaCol) continue;
+                const realCol = cotCabCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+                if (!realCol || realCol === realPKCotCol) continue;
 
-                const val = def.field === 'OrderNumber' ? (nextCotiza || orderNumber) : item[def.field];
+                let val = getPath(data, def.field);
                 if (val === undefined) continue;
-                rowPairsMap.set(realCol, val);
+
+                if (realCol.toLowerCase() === 'cond_pago' && typeof val === 'string') {
+                  const upperVal = val.toUpperCase().trim();
+                  if (upperVal === 'CONTADO') val = 'CONT';
+                  else if (upperVal === 'CREDITO') val = 'CRE';
+                }
+                if (['cve_atendio', 'cve_vendedor', 'cotizador', 'asesor'].includes(realCol.toLowerCase()) && val !== null && val !== undefined) {
+                  val = String(val).substring(0, 6);
+                }
+                headerCotPairsMap.set(realCol, val);
               }
 
-              const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
-              const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
-              if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
+              if (localClienteId) {
+                const erpClientCol = fieldMapCotCab['CustomerId.CustomerNumber'] || fieldMapCotCab['CustomerId.Id'] || 'Cve_Cte';
+                const realClientCol = cotCabCols.find(c => c.toLowerCase() === erpClientCol.toLowerCase())
+                  || cotCabCols.find(c => ['cve_cte', 'cve_cliente', 'cliente'].includes(c.toLowerCase()));
+                if (realClientCol) headerCotPairsMap.set(realClientCol, localClienteId);
+              }
+              if (localVendedorId) {
+                const realCveAtendioCol  = cotCabCols.find(c => c.toLowerCase() === 'cve_atendio');
+                const realCveVendedorCol = cotCabCols.find(c => c.toLowerCase() === 'cve_vendedor');
+                const realCotizadorCol   = cotCabCols.find(c => c.toLowerCase() === 'cotizador');
+                if (realCveAtendioCol)  headerCotPairsMap.set(realCveAtendioCol, localVendedorId);
+                if (realCveVendedorCol) headerCotPairsMap.set(realCveVendedorCol, localVendedorId);
+                if (realCotizadorCol)   headerCotPairsMap.set(realCotizadorCol, localVendedorId);
+              }
 
-              const precioEspecialVal = (itemSku ? precioEspecialMap.get(itemSku.toLowerCase()) : undefined) ?? 0.0;
+              if (poVal) {
+                const realCotOcCol = cotCabCols.find(c => c.toLowerCase() === 'oc' || c.toLowerCase() === 'no_oc');
+                if (realCotOcCol) headerCotPairsMap.set(realCotOcCol, poVal.substring(0, 10));
+              }
 
-              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
-              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
-              setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
-              setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
-              setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
-              setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
-              setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
-              setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
-              setIfColExists(rowPairsMap, cotDetCols, 'DescuentoCliente', '');
-              setIfColExists(rowPairsMap, cotDetCols, 'FechaEntrega', todayStr);
+              if (orderNumber) {
+                const realCotIdPsCol = cotCabCols.find(c => c.toLowerCase() === 'idps');
+                if (realCotIdPsCol) headerCotPairsMap.set(realCotIdPsCol, String(orderNumber).substring(0, 15));
+              }
 
-              const rowPairs = Array.from(rowPairsMap.entries());
-              if (rowPairs.length > 0) {
-                const rCols = rowPairs.map(([c]) => c);
-                const rVals = rowPairs.map(([, v]) => v);
-                const rPlaceholders = rCols.map(() => '?').join(', ');
-                const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
-                await connection.execute(`INSERT IGNORE INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+              forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
+              forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
+              forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
+
+              let cotSyncImpLimit = 999999999;
+              try {
+                const [paramRows] = await connection.execute("SELECT CotSyncImp FROM paramvf LIMIT 1");
+                if (paramRows.length > 0 && paramRows[0].CotSyncImp !== undefined && paramRows[0].CotSyncImp !== null) {
+                  cotSyncImpLimit = Number(paramRows[0].CotSyncImp);
+                }
+              } catch (pErr) {
+                console.error('[WEBHOOK] Error consultando CotSyncImp en paramvf:', pErr.message);
+              }
+
+              const findCaseInsensitive = (obj, keyName) => {
+                if (!obj || typeof obj !== 'object') return undefined;
+                const tKey = keyName.toLowerCase();
+                for (const k of Object.keys(obj)) {
+                  if (k.toLowerCase() === tKey) return obj[k];
+                }
+                return undefined;
+              };
+
+              const rawIsCrm = getPath(data, 'IsCRM')
+                ?? getPath(data, 'details_promo.0.order.IsCRM')
+                ?? getPath(data, 'details_promo.0.order.IsCrm')
+                ?? findCaseInsensitive(data, 'iscrm')
+                ?? findCaseInsensitive(data.details_promo?.[0]?.order, 'iscrm');
+
+              const isCrmVal = rawIsCrm === 1 
+                || String(rawIsCrm).trim() === '1' 
+                || rawIsCrm === true 
+                || String(rawIsCrm).trim().toLowerCase() === 'true';
+
+              const isOverLimit = totalAmountVal > cotSyncImpLimit;
+              const syncCalculatedVal = (isCrmVal || isOverLimit) ? 0 : 1;
+
+              forceColValue(headerCotPairsMap, cotCabCols, 'Sync', syncCalculatedVal);
+
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha', todayStr);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Fech_Entrega', todayStr);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'FechaProbableCierre', todayStr);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha_Captura', todayStr);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Hora_Captura', timeStr);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Moneda', 1);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'TC', 1.0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Contacto', 0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Dias_Credito', 0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Aumento_Precio', 0.0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Descto_Porcentaje', 0.0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'TotalFacturado', 0.0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Remision', 0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Almacen', 1);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Sugar', 0);
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Observaciones', '');
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Atencion', '');
+              setIfColExists(headerCotPairsMap, cotCabCols, 'OC', '');
+              setIfColExists(headerCotPairsMap, cotCabCols, 'IdSugar', '');
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Asesor', branchName.substring(0, 6));
+              setIfColExists(headerCotPairsMap, cotCabCols, 'AsignoAsesor', branchName.substring(0, 6));
+              setIfColExists(headerCotPairsMap, cotCabCols, 'Proyecto', 'NA');
+              setIfColExists(headerCotPairsMap, cotCabCols, 'TipoProducto', '');
+
+              const cotCols = Array.from(headerCotPairsMap.keys());
+              const cotVals = Array.from(headerCotPairsMap.values());
+              const cotPlaceholders = cotCols.map(() => '?').join(', ');
+              const cotColsSql = cotCols.map(c => `\`${c}\``).join(', ');
+
+              await connection.execute(`INSERT INTO \`${cotCabTable}\` (${cotColsSql}) VALUES (${cotPlaceholders})`, cotVals);
+              await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'COT'", [nextCotiza]);
+              console.log(`[WEBHOOK] Cotización insertada con Folio (No_Cotiza): ${nextCotiza}`);
+
+              if (details.length > 0 && cotDetTable && (await tableExists(cotDetTable))) {
+                const cotDetCols = await validColumns(cotDetTable);
+                let cotPartidaIndex = 1;
+                for (const item of details) {
+                  const rowPairsMap = new Map();
+
+                  const realCotFKCol = cotDetCols.find(c => c.toLowerCase() === 'n_cotizacion');
+                  if (realCotFKCol) rowPairsMap.set(realCotFKCol, nextCotiza);
+
+                  const realCotPartidaCol = cotDetCols.find(c => c.toLowerCase() === 'partida');
+                  if (realCotPartidaCol) rowPairsMap.set(realCotPartidaCol, cotPartidaIndex++);
+
+                  for (const def of PS_FIELDS_DETALLE) {
+                    const erpCol = fieldMapCotDet[def.field];
+                    if (!erpCol) continue;
+                    const realCol = cotDetCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
+                    if (!realCol || realCol === realCotFKCol || realCol === realCotPartidaCol) continue;
+
+                    const val = def.field === 'OrderNumber' ? (nextCotiza || orderNumber) : item[def.field];
+                    if (val === undefined) continue;
+                    rowPairsMap.set(realCol, val);
+                  }
+
+                  const itemSku = String(item.ProductId || item.ProductCode || item.SKU || item.product?.SKU || item.product?.ProductCode || '').trim();
+                  const realCotCveArtCol = cotDetCols.find(c => c.toLowerCase() === 'cve_art' || c.toLowerCase() === 'cve_articulo');
+                  if (realCotCveArtCol && itemSku) rowPairsMap.set(realCotCveArtCol, itemSku);
+
+                  const precioEspecialVal = (itemSku ? precioEspecialMap.get(itemSku.toLowerCase()) : undefined) ?? 0.0;
+
+                  setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
+                  setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
+                  setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
+                  setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                  setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
+                  setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
+                  setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
+                  setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
+                  setIfColExists(rowPairsMap, cotDetCols, 'DescuentoCliente', '');
+                  setIfColExists(rowPairsMap, cotDetCols, 'FechaEntrega', todayStr);
+
+                  const rowPairs = Array.from(rowPairsMap.entries());
+                  if (rowPairs.length > 0) {
+                    const rCols = rowPairs.map(([c]) => c);
+                    const rVals = rowPairs.map(([, v]) => v);
+                    const rPlaceholders = rCols.map(() => '?').join(', ');
+                    const rColsSql = rCols.map(c => `\`${c}\``).join(', ');
+                    await connection.execute(`INSERT IGNORE INTO \`${cotDetTable}\` (${rColsSql}) VALUES (${rPlaceholders})`, rVals);
+                  }
+                }
+                console.log(`[WEBHOOK] Renglones de cotización insertados para folio ${nextCotiza}`);
               }
             }
-            console.log(`[WEBHOOK] Renglones de cotización insertados para folio ${nextCotiza}`);
           }
+        }
+
+        // Finalizar aquí para StatusId 11 (NO SE CREA PEDIDO)
+        await connection.commit();
+        await saveWebhookLog('orders', orderNumber, data, 1, null);
+        return;
+      }
+
+      // B. SI EL ESTATUS NO ES 38: No crear pedido en cbpedvta
+      if (statusIdVal !== 38) {
+        console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / Cotización Aprobada). No se crea registro en '${cabTable}'.`);
+        await connection.commit();
+        await saveWebhookLog('orders', orderNumber, data, 1, null);
+        return;
+      }
+
+      // C. PROCESAR Y CREAR PEDIDO (StatusId === 38)
+      // Buscar si existe una Cotización previa para vincular No_Cotiza
+      if (cotCabTable && (await tableExists(cotCabTable))) {
+        try {
+          const [cotPrevRows] = await connection.execute(
+            `SELECT No_Cotiza FROM \`${cotCabTable}\` WHERE IDPs = ? OR IDPs = ? LIMIT 1`,
+            [String(orderNumber), String(data.Id || '')]
+          );
+          if (cotPrevRows.length > 0) {
+            nextCotiza = cotPrevRows[0].No_Cotiza;
+          }
+        } catch (cotPrevErr) {
+          console.error('[WEBHOOK] Error buscando Cotización previa para asociar a Pedido 38:', cotPrevErr.message);
         }
       }
 
-      // B. INSERTAR PEDIDO
       let nextFolio = null;
       let insertResult = null;
 
@@ -764,7 +969,7 @@ async function handleOrderInsert(data) {
 
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 41 ? 0 : 1);
+          headerPairsMap.set(realDistCol, 1);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
@@ -779,11 +984,11 @@ async function handleOrderInsert(data) {
         insertResult = insertRes;
 
         await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'NPED'", [nextFolio]);
-        console.log(`[WEBHOOK] Pedido insertado con Folio (No_Pedido): ${nextFolio}`);
+        console.log(`[WEBHOOK] Pedido insertado con Folio (No_Pedido): ${nextFolio} (StatusId 38)`);
       } else {
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, parseInt(data.StatusId) === 41 ? 0 : 1);
+          headerPairsMap.set(realDistCol, 1);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
@@ -796,7 +1001,7 @@ async function handleOrderInsert(data) {
 
         const [insertRes] = await connection.execute(`INSERT INTO \`${cabTable}\` (${colsSql}) VALUES (${placeholders})`, vals);
         insertResult = insertRes;
-        console.log(`[WEBHOOK] Registro insertado en '${cabTable}'`);
+        console.log(`[WEBHOOK] Registro insertado en '${cabTable}' (StatusId 38)`);
       }
 
       // Renglones del pedido
