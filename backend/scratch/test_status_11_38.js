@@ -58,21 +58,33 @@ async function runTest() {
     console.log(`   ✓ Total actualizado en cbcot: Total=${cotRows11Upd[0]?.Total} (Esperado: 2320)`);
     console.log('');
 
-    // 3. Enviar Webhook con StatusId 38 (Cotización Aprobada -> Crear Pedido)
-    console.log('--- 3. Probando aprobación con StatusId: 38 (Creación de Pedido) ---');
-    const payloadStatus38 = {
-      ...payloadStatus11Update,
+    // 4. Probando envío directo con StatusId: 38 (sin pasar por status 11 previo)
+    console.log('--- 4. Probando envío directo con StatusId: 38 con cotización nueva ---');
+    const testDirect38OrderNumber = 'TS_DIR_' + Date.now().toString().slice(-6);
+    const payloadDirect38 = {
+      OrderNumber: testDirect38OrderNumber,
       StatusId: 38,
-      StatusName: 'COTIZACION APROBADA'
+      StatusName: 'COTIZACION APROBADA DIRECTA',
+      TotalAmount: 5800.00,
+      SubTotalAmount: 5000.00,
+      TotalTax: 800.00,
+      CustomerId: { CustomerNumber: '000001' },
+      details: [
+        {
+          ProductId: '1020625',
+          QtyOrdered: 5,
+          Price: 1000.00
+        }
+      ]
     };
 
-    await handleOrderInsert(payloadStatus38);
+    await handleOrderInsert(payloadDirect38);
 
-    const [pedRows38] = await query('SELECT No_Pedido, Cotizacion, Distribuido, Total FROM cbpedvta WHERE Cotizacion = ?', [noCotizaGenerado]);
-    console.log(`   ✓ Pedido en cbpedvta: ${pedRows38.length > 0 ? 'CREADO EXITOSAMENTE' : '❌ NO CREADO'}`);
-    if (pedRows38.length > 0) {
-      console.log(`     -> No_Pedido: #${pedRows38[0].No_Pedido} | Cotizacion asociada: #${pedRows38[0].Cotizacion} | Distribuido: ${pedRows38[0].Distribuido} | Total: ${pedRows38[0].Total}`);
-    }
+    const [cotDirRows] = await query('SELECT No_Cotiza, Total FROM cbcot WHERE IDPs = ?', [testDirect38OrderNumber]);
+    const [pedDirRows] = await query('SELECT No_Pedido, Cotizacion, Total FROM cbpedvta WHERE Cotizacion = ?', [cotDirRows[0]?.No_Cotiza || -1]);
+
+    console.log(`   ✓ Cotización en cbcot creada/actualizada: ${cotDirRows.length > 0 ? 'SÍ (No_Cotiza: ' + cotDirRows[0].No_Cotiza + ', Total: ' + cotDirRows[0].Total + ')' : '❌ NO'}`);
+    console.log(`   ✓ Pedido en cbpedvta creado: ${pedDirRows.length > 0 ? 'SÍ (No_Pedido: ' + pedDirRows[0].No_Pedido + ', Cotizacion: ' + pedDirRows[0].Cotizacion + ', Total: ' + pedDirRows[0].Total + ')' : '❌ NO'}`);
 
     console.log('\n====================================================');
     console.log('📊 PRUEBA COMPLETADA SATISFACTORIAMENTE');

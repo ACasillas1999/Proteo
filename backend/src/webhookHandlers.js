@@ -652,9 +652,9 @@ async function handleOrderInsert(data) {
       const todayStr = new Date().toISOString().split('T')[0];
       const timeStr = new Date().toTimeString().split(' ')[0];
 
-      // A. PROCESAR COTIZACIÓN (si StatusId es 11)
+      // A. PROCESAR COTIZACIÓN (si StatusId es 11 o 38)
       let nextCotiza = null;
-      if (statusIdVal === 11) {
+      if (statusIdVal === 11 || statusIdVal === 38) {
         if (cotCabTable && (await tableExists(cotCabTable))) {
           // Verificar si ya existía en cbcot por IDPs
           const [cotExistingRows] = await connection.execute(
@@ -664,7 +664,7 @@ async function handleOrderInsert(data) {
 
           if (cotExistingRows.length > 0) {
             nextCotiza = cotExistingRows[0].No_Cotiza;
-            console.log(`[WEBHOOK] Cotización previa encontrada en '${cotCabTable}' (No_Cotiza: ${nextCotiza}). Actualizando...`);
+            console.log(`[WEBHOOK] Cotización previa encontrada en '${cotCabTable}' (No_Cotiza: ${nextCotiza}). Actualizando datos con la versión más reciente...`);
 
             const cotCabCols = await validColumns(cotCabTable);
             const cotSubCol = cotCabCols.find(c => c.toLowerCase() === 'subtotal');
@@ -919,10 +919,12 @@ async function handleOrderInsert(data) {
           }
         }
 
-        // Finalizar aquí para StatusId 11 (NO SE CREA PEDIDO)
-        await connection.commit();
-        await saveWebhookLog('orders', orderNumber, data, 1, null);
-        return;
+        // Finalizar aquí solo si es exclusivamente StatusId 11 (NO SE CREA PEDIDO)
+        if (statusIdVal === 11) {
+          await connection.commit();
+          await saveWebhookLog('orders', orderNumber, data, 1, null);
+          return;
+        }
       }
 
       // B. SI EL ESTATUS NO ES 38: No crear pedido en cbpedvta
