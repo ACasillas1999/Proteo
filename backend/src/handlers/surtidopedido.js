@@ -28,9 +28,14 @@ async function sync(cambio) {
 
   let orderPsId = null;
   let orderNumberIpad = null;
+  let erpNoPedido = clave_registro;
+  let employeeId = 3; // fallback por defecto
 
   if (orderRows.length > 0) {
     const row = orderRows[0];
+    if (row.No_Pedido) {
+      erpNoPedido = row.No_Pedido;
+    }
     if (erpIdCol && row[erpIdCol]) {
       orderPsId = row[erpIdCol];
     }
@@ -39,70 +44,62 @@ async function sync(cambio) {
     } else if (row.IDPs) {
       orderNumberIpad = row.IDPs;
     }
+    if (row.Cve_Atendio) {
+      const parsedEmp = parseInt(row.Cve_Atendio, 10);
+      if (!isNaN(parsedEmp) && parsedEmp > 0) {
+        employeeId = parsedEmp;
+      }
+    }
   }
 
   if (!orderNumberIpad) {
     orderNumberIpad = String(clave_registro);
   }
 
-  // 3. Buscar en webhook_logs para recuperar orderPsId, EmployeeId y detalles originales de PowerSales
-  let employeeId = 3; // fallback por defecto
-  let originalDetails = [];
-  try {
-    const [logRows] = await localQuery(
-      "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 200"
-    );
-    for (const log of logRows) {
-      const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
-      if (!datosJson) continue;
+  // 3. Fallback a webhook_logs SOLO si orderPsId no se encontró en cbpedvta
+  if (!orderPsId) {
+    try {
+      const [logRows] = await localQuery(
+        "SELECT datos FROM webhook_logs WHERE entidad = 'orders' ORDER BY id DESC LIMIT 300"
+      );
+      for (const log of logRows) {
+        const datosJson = typeof log.datos === 'string' ? JSON.parse(log.datos) : log.datos;
+        if (!datosJson) continue;
 
-      const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
-      const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
-      const poNum = datosJson.order ? datosJson.order.PurchaseOrderNumber : datosJson.PurchaseOrderNumber;
-      const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
-      const details = datosJson.order ? datosJson.order.details : datosJson.details;
+        const orderId = datosJson.order ? datosJson.order.Id : datosJson.Id;
+        const orderNum = datosJson.order ? datosJson.order.OrderNumber : datosJson.OrderNumber;
+        const poNum = datosJson.order ? datosJson.order.PurchaseOrderNumber : datosJson.PurchaseOrderNumber;
+        const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
 
-      const matchById = orderPsId && (Number(orderId) === Number(orderPsId) || String(orderId) === String(orderPsId));
-      const matchByNum = orderNumberIpad && (String(orderNum).trim() === String(orderNumberIpad).trim());
-      const matchByClave = (String(orderId) === String(clave_registro)) ||
-        (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
-        (poNum && String(poNum).trim() === String(clave_registro).trim());
+        const matchByNum = orderNumberIpad && orderNum && (String(orderNum).trim() === String(orderNumberIpad).trim());
+        const matchByClave = (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
+          (poNum && String(poNum).trim() === String(clave_registro).trim());
 
-      if (matchById || matchByNum || matchByClave) {
-        if (!orderPsId && orderId) {
-          orderPsId = orderId;
+        if (matchByNum || matchByClave) {
+          if (orderId) orderPsId = orderId;
+          if (repObj && repObj.Id) employeeId = Number(repObj.Id);
+          if (orderPsId) break;
         }
-        if (!orderNumberIpad && orderNum) {
-          orderNumberIpad = orderNum;
-        }
-        if (repObj && repObj.Id) {
-          employeeId = Number(repObj.Id);
-        }
-        if (Array.isArray(details) && details.length > 0) {
-          originalDetails = details;
-        }
-        if (orderPsId) break;
       }
+    } catch (err) {
+      console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
     }
-  } catch (err) {
-    console.error(`[SYNC surtidopedido] Error al buscar en logs:`, err.message);
   }
 
   if (!orderPsId) {
-    throw new Error(`No se pudo encontrar el ID interno de PowerSales ni en la tabla local '${cabTable}' ni en los logs de webhook para el Folio '${clave_registro}'. Verifica que el pedido exista en PowerSales.`);
+    // Si no se encontró un ID numérico de PS, usamos orderNumberIpad como fallback
+    orderPsId = orderNumberIpad;
   }
 
   // 4. Determinar los identificadores numéricos de estatus para PowerSales
   let statusId = 44; // default / 'SIN DEFINIR'
   if (status === 'FULLY_PICKED') {
-    // TEMPORAL: Se envía statusId 42 (PAYMENT_PENDING). 
-    // PARA REVERTIR AL ORIGINAL: Cambiar 'statusId = 42;' por 'statusId = 43;' (FULLY_PICKED / SURTIDO COMPLETADO).
     statusId = 43;
   } else if (status === 'PARTIALLY_PICKED') {
     statusId = 6;
   }
 
-  // 5. Obtener las partidas del pedido desde la tabla de detalles del ERP (dtpedvta)
+  // 5. Obtener las partidas del pedido directamente desde dtpedvta
   const detTable = await getConfig('pedido_detalle_table', 'dtpedvta');
   const fieldMapDet = await getFieldMapping('pedido_detalle');
 
@@ -111,27 +108,14 @@ async function sync(cambio) {
   const priceCol = fieldMapDet['Price'] || 'Costo_Unitario';
 
   const [itemRows] = await query(
-    `SELECT * FROM \`${detTable}\` WHERE No_Pedido = ?`,
-    [clave_registro]
+    `SELECT * FROM \`${detTable}\` WHERE No_Pedido = ? OR No_Pedido = ?`,
+    [erpNoPedido, clave_registro]
   );
 
-  const remainingDetails = [...originalDetails];
   const ordersDetails = [];
   for (const row of itemRows) {
-    const sku = row[skuCol];
+    const sku = String(row[skuCol] || '').trim();
     if (!sku) continue;
-
-    // Buscar la partida correspondiente en el webhook original para preservar IDs sin duplicar
-    const origIndex = remainingDetails.findIndex(d =>
-      String(d.ProductId).trim() === String(sku).trim() ||
-      String(d.ProductCode).trim() === String(sku).trim()
-    );
-
-    let origItem = null;
-    if (origIndex !== -1) {
-      origItem = remainingDetails[origIndex];
-      remainingDetails.splice(origIndex, 1);
-    }
 
     const qtyOrdered = Number(row[qtyCol] || 0);
     const qtyDelivered = Number(row.Cant_Facturada || 0);
@@ -147,27 +131,27 @@ async function sync(cambio) {
     const total = qtyOrdered * price;
 
     ordersDetails.push({
-      Id: origItem ? origItem.Id : null,
-      ProductId: String(sku).trim(),
-      ProductCode: String(sku).trim(),
+      Id: null,
+      ProductId: sku,
+      ProductCode: sku,
       QtyOrdered: qtyOrdered.toFixed(2),
       QtyDelivered: qtyDelivered.toFixed(2),
       QtyPicked: qtyPicked.toFixed(2),
       Price: price.toFixed(2),
       SubTotalAmount: subTotal.toFixed(2),
       TotalAmount: total.toFixed(2),
-      UniqueId: origItem ? origItem.UniqueId : `UUID-${orderPsId}-${sku}`,
-      WarehouseId: (origItem && origItem.WarehouseId) ? String(origItem.WarehouseId) : "1"
+      UniqueId: `UUID-${orderPsId}-${sku}`,
+      WarehouseId: "1"
     });
   }
 
   const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const payload = {
-    Id: Number(orderPsId),
+    Id: Number(orderPsId) || orderPsId,
     StatusId: statusId,
     StatusName: status,
     OrderNumberIPAD: orderNumberIpad,
-    IDPedidoEnc: Number(orderPsId),
+    IDPedidoEnc: Number(orderPsId) || orderPsId,
     Employee: Number(employeeId),
     ExternalReference: orderNumberIpad,
     ModifiedDate: nowStr,
