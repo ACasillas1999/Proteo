@@ -125,6 +125,10 @@ async function mapCliente(row) {
       // text | number | boolean | numStr
       const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
       if (!erpCol) {
+        // Si el campo no está mapeado y no es obligatorio, no lo enviamos para evitar que PowerSales falle por columnas inexistes o con erratas internas en su API
+        if (!def.required) {
+          continue;
+        }
         if (type === 'boolean') {
           payload[field] = 0;
         } else if (type === 'number') {
