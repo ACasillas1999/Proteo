@@ -125,8 +125,9 @@ async function mapCliente(row) {
       // text | number | boolean | numStr
       const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
       if (!erpCol) {
-        // Si el campo no está mapeado y no es obligatorio, no lo enviamos para evitar que PowerSales falle por columnas inexistes o con erratas internas en su API
-        if (!def.required) {
+        // Excluimos exclusivamente 'IsEarlyOrderEnabled' debido al bug interno del backend de PowerSales (busca 'IsEralyOrderEnabled' en SQL).
+        // El resto de los campos (como ChannelId, BannerId, etc.) se envían con 0/null para evitar 'Undefined array key' en el controller de PowerSales.
+        if (field === 'IsEarlyOrderEnabled') {
           continue;
         }
         if (type === 'boolean') {
