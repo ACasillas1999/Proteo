@@ -387,7 +387,7 @@ async function handleOrderInsert(data) {
             setIfColExists(rowPairsMap, detCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
-            setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.Price || 0));
+            setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
             setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
             setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
             setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
@@ -470,7 +470,7 @@ async function handleOrderInsert(data) {
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
-                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                 setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
@@ -540,10 +540,16 @@ async function handleOrderInsert(data) {
       let val = getPath(data, def.field);
       if (val === undefined) continue;
 
-      if (realCol.toLowerCase() === 'condicion_pago' && typeof val === 'string') {
+      if (['condicion_pago', 'cond_pago', 'cont_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
         const upperVal = val.toUpperCase().trim();
         if (upperVal === 'CONTADO') val = 'CONT';
         else if (upperVal === 'CREDITO') val = 'CRE';
+      }
+
+      if (realCol.toLowerCase() === 'credito_contado' && typeof val === 'string') {
+        const upperVal = val.toUpperCase().trim();
+        if (upperVal === 'CONTADO' || upperVal.startsWith('CONT') || upperVal === 'CO') val = 'Co';
+        else if (upperVal === 'CREDITO' || upperVal.startsWith('CRED') || upperVal === 'CR') val = 'Cr';
       }
 
       if (realCol.toLowerCase() === 'tipopedido' && typeof val === 'string') {
@@ -731,7 +737,7 @@ async function handleOrderInsert(data) {
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
-                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                 setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
@@ -768,10 +774,16 @@ async function handleOrderInsert(data) {
                 let val = getPath(data, def.field);
                 if (val === undefined) continue;
 
-                if (realCol.toLowerCase() === 'cond_pago' && typeof val === 'string') {
+                if (['cond_pago', 'cont_pago', 'condicion_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
                   const upperVal = val.toUpperCase().trim();
                   if (upperVal === 'CONTADO') val = 'CONT';
                   else if (upperVal === 'CREDITO') val = 'CRE';
+                }
+
+                if (realCol.toLowerCase() === 'credito_contado' && typeof val === 'string') {
+                  const upperVal = val.toUpperCase().trim();
+                  if (upperVal === 'CONTADO' || upperVal.startsWith('CONT') || upperVal === 'CO') val = 'Co';
+                  else if (upperVal === 'CREDITO' || upperVal.startsWith('CRED') || upperVal === 'CR') val = 'Cr';
                 }
                 if (['cve_atendio', 'cve_vendedor', 'cotizador', 'asesor'].includes(realCol.toLowerCase()) && val !== null && val !== undefined) {
                   val = String(val).substring(0, 6);
@@ -908,7 +920,7 @@ async function handleOrderInsert(data) {
                   setIfColExists(rowPairsMap, cotDetCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
-                  setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.Price || 0));
+                  setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                   setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
@@ -1081,7 +1093,7 @@ async function handleOrderInsert(data) {
           setIfColExists(rowPairsMap, detCols, 'Cant_Pedida', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
-          setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.Price || 0));
+          setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
           setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
           setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
           setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);

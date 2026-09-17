@@ -67,6 +67,7 @@ const PS_FIELDS_DETALLE = [
   { field: 'QtyDelivered',   type: 'erpColumn', required: false, label: 'Cantidad entregada' },
   { field: 'QtyPicked',      type: 'erpColumn', required: false, label: 'Cantidad surtida' },
   { field: 'Price',          type: 'erpColumn', required: false, label: 'Precio' },
+  { field: 'PriceGross',     type: 'erpColumn', required: false, label: 'Precio Bruto (PriceGross)' },
   { field: 'SubTotalAmount', type: 'erpColumn', required: false, label: 'Subtotal' },
   { field: 'PrecioEspecial_PL3', type: 'articuloPrice', required: false, label: 'Precio Especial del Artículo (Se asigna automáticamente a la columna PL_3 desde la tabla articulo)' },
   { field: 'Discount1',      type: 'erpColumn', required: false, label: 'Descuento 1' },
