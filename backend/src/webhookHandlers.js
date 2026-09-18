@@ -874,8 +874,9 @@ async function handleOrderInsert(data) {
                 setIfColExists(headerCotPairsMap, cotCabCols, 'credito_contado', coCrVal);
               }
               if (contCreVal) {
+                setIfColExists(headerCotPairsMap, cotCabCols, 'Cond_Pago', contCreVal);
+                setIfColExists(headerCotPairsMap, cotCabCols, 'cond_pago', contCreVal);
                 setIfColExists(headerCotPairsMap, cotCabCols, 'cont_pago', contCreVal);
-                setIfColExists(headerCotPairsMap, cotCotCols || cotCabCols, 'cond_pago', contCreVal);
                 setIfColExists(headerCotPairsMap, cotCabCols, 'condicion_pago', contCreVal);
               }
 
