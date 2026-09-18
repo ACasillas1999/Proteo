@@ -253,6 +253,25 @@ async function handleOrderInsert(data) {
       }
     };
 
+    // Extraer y resolver valor de Condición de Pago (PaymentType / Payment / IsCredit)
+    let rawPaymentVal = String(getPath(data, 'PaymentType') || getPath(data, 'Payment') || '').trim().toUpperCase();
+    if (!rawPaymentVal || rawPaymentVal === '0.00' || rawPaymentVal === '0') {
+      if (data.CustomerId && data.CustomerId.IsCredit !== undefined && data.CustomerId.IsCredit !== null) {
+        rawPaymentVal = Number(data.CustomerId.IsCredit) === 1 ? 'CREDITO' : 'CONTADO';
+      }
+    }
+
+    let coCrVal = null;    // 'Co' o 'Cr'
+    let contCreVal = null; // 'CONT' o 'CRE'
+
+    if (rawPaymentVal.includes('CRED') || rawPaymentVal === 'CR') {
+      coCrVal = 'Cr';
+      contCreVal = 'CRE';
+    } else if (rawPaymentVal.includes('CONT') || rawPaymentVal === 'CO') {
+      coCrVal = 'Co';
+      contCreVal = 'CONT';
+    }
+
     // 1. Verificar si el pedido ya existe en el ERP
     let exists = false;
     let existingNoPedido = null;
@@ -345,6 +364,18 @@ async function handleOrderInsert(data) {
           updates.push(`\`${realTotalCol}\` = ?`);
           updateParams.push(totalAmountVal);
         }
+
+        const realCredContCol = cabCols.find(c => c.toLowerCase() === 'credito_contado');
+        const realCondPagoCol = cabCols.find(c => ['condicion_pago', 'cond_pago', 'cont_pago'].includes(c.toLowerCase()));
+        if (realCredContCol && coCrVal) {
+          updates.push(`\`${realCredContCol}\` = ?`);
+          updateParams.push(coCrVal);
+        }
+        if (realCondPagoCol && contCreVal) {
+          updates.push(`\`${realCondPagoCol}\` = ?`);
+          updateParams.push(contCreVal);
+        }
+
         if (updates.length > 0) {
           updateParams.push(existingNoPedido);
           await query(`UPDATE \`${cabTable}\` SET ${updates.join(', ')} WHERE No_Pedido = ?`, updateParams);
@@ -627,6 +658,15 @@ async function handleOrderInsert(data) {
     forceColValue(headerPairsMap, cabCols, 'Total', totalAmountVal);
     forceColValue(headerPairsMap, cabCols, 'IVA_Porcentaje', 16);
 
+    if (coCrVal) {
+      setIfColExists(headerPairsMap, cabCols, 'credito_contado', coCrVal);
+    }
+    if (contCreVal) {
+      setIfColExists(headerPairsMap, cabCols, 'condicion_pago', contCreVal);
+      setIfColExists(headerPairsMap, cabCols, 'cont_pago', contCreVal);
+      setIfColExists(headerPairsMap, cabCols, 'cond_pago', contCreVal);
+    }
+
     setIfColExists(headerPairsMap, cabCols, 'Fech_Captura', todayStr);
     setIfColExists(headerPairsMap, cabCols, 'Hora_Captura', timeStr);
     setIfColExists(headerPairsMap, cabCols, 'Asesor', branchName.substring(0, 6));
@@ -687,6 +727,8 @@ async function handleOrderInsert(data) {
             const cotCabCols = await validColumns(cotCabTable);
             const cotSubCol = cotCabCols.find(c => c.toLowerCase() === 'subtotal');
             const cotTotCol = cotCabCols.find(c => c.toLowerCase() === 'total');
+            const cotCredContCol = cotCabCols.find(c => c.toLowerCase() === 'credito_contado');
+            const cotCondPagoCol = cotCabCols.find(c => ['cont_pago', 'cond_pago', 'condicion_pago'].includes(c.toLowerCase()));
             const cotUpdates = [];
             const cotUpdateParams = [];
 
@@ -697,6 +739,14 @@ async function handleOrderInsert(data) {
             if (cotTotCol && totalAmountVal > 0) {
               cotUpdates.push(`\`${cotTotCol}\` = ?`);
               cotUpdateParams.push(totalAmountVal);
+            }
+            if (cotCredContCol && coCrVal) {
+              cotUpdates.push(`\`${cotCredContCol}\` = ?`);
+              cotUpdateParams.push(coCrVal);
+            }
+            if (cotCondPagoCol && contCreVal) {
+              cotUpdates.push(`\`${cotCondPagoCol}\` = ?`);
+              cotUpdateParams.push(contCreVal);
             }
 
             if (cotUpdates.length > 0) {
@@ -819,6 +869,15 @@ async function handleOrderInsert(data) {
               forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
               forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
               forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
+
+              if (coCrVal) {
+                setIfColExists(headerCotPairsMap, cotCabCols, 'credito_contado', coCrVal);
+              }
+              if (contCreVal) {
+                setIfColExists(headerCotPairsMap, cotCabCols, 'cont_pago', contCreVal);
+                setIfColExists(headerCotPairsMap, cotCotCols || cotCabCols, 'cond_pago', contCreVal);
+                setIfColExists(headerCotPairsMap, cotCabCols, 'condicion_pago', contCreVal);
+              }
 
               let cotSyncImpLimit = 999999999;
               try {
