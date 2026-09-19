@@ -17,7 +17,9 @@ const TYPE_BADGE = {
   autoFixed:  { label: 'Fijo (16)',  color: '#10b981' },
   autoSystem: { label: 'Fecha/Hora', color: '#a78bfa' },
   autoSync:   { label: 'Sync Específico', color: '#8b5cf6' },
-  articuloPrice: { label: 'Precio Especial', color: '#ec4899' }
+  articuloPrice: { label: 'Precio Especial', color: '#ec4899' },
+  discountList: { label: 'Lista Descuento', color: '#f59e0b' },
+  discountListFixed: { label: 'Fijo (100%)', color: '#10b981' }
 };
 
 export default function Mapeo() {
@@ -204,6 +206,7 @@ export default function Mapeo() {
   const entityForTab = {
     articulo: 'articulo',
     pricelists: 'articulo',
+    discountlists: 'articulo',
     articuloalm: 'articuloalm',
     cliente: 'cliente',
     pedido_cabecera: 'pedido_cabecera',
@@ -214,6 +217,7 @@ export default function Mapeo() {
   const fieldsForTab = {
     articulo: fieldsArt,
     pricelists: fieldsArt,
+    discountlists: fieldsArt,
     articuloalm: fieldsAlm,
     cliente: fieldsCli,
     pedido_cabecera: { psFields: pedPsFields.pedido_cabecera, erpColumns: pedidoCols.pedido_cabecera, dbConnected: tablesOk },
@@ -232,8 +236,9 @@ export default function Mapeo() {
 
   const visibleFields = psFields.filter(f => {
     // 1. Filtrar por pestaña
-    if (activeTab === 'articulo' && f.type === 'priceList') return false;
+    if (activeTab === 'articulo' && (f.type === 'priceList' || f.type === 'discountList' || f.type === 'discountListFixed')) return false;
     if (activeTab === 'pricelists' && f.type !== 'priceList') return false;
+    if (activeTab === 'discountlists' && (f.type !== 'discountList' && f.type !== 'discountListFixed')) return false;
 
     // En maestro, BranchId no aplica — cada sucursal usa su .env
     if (mode === 'master' && f.field === 'BranchId') return false;
@@ -337,6 +342,11 @@ export default function Mapeo() {
             className={`btn ${activeTab === 'pricelists' ? 'btn--cyan' : 'btn--outline'}`} 
             onClick={() => { setActiveTab('pricelists'); setFilter(''); }}>
             💲 Listas de Precios
+          </button>
+          <button 
+            className={`btn ${activeTab === 'discountlists' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('discountlists'); setFilter(''); }}>
+            🏷️ Listas de Descuentos
           </button>
           <button 
             className={`btn ${activeTab === 'articuloalm' ? 'btn--cyan' : 'btn--outline'}`} 
@@ -486,6 +496,12 @@ export default function Mapeo() {
                   control = (
                     <span style={{ color: '#ec4899', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
                       🏷️ Precio Especial desde la tabla 'articulo' (columna PL_3 del ERP)
+                    </span>
+                  );
+                } else if (type === 'discountListFixed') {
+                  control = (
+                    <span style={{ color: '#10b981', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      🔒 100.00% Fijo (Descuento Encargado Pricing)
                     </span>
                   );
                 } else if (type === 'skuPrefix') {

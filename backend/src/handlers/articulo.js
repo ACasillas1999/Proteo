@@ -65,6 +65,13 @@ const PS_FIELDS = [
   { field: 'PL_Precio_Venta',    type: 'priceList',  required: false, label: 'Precio_Venta (Lista 2)',     defaultErp: 'Precio_Venta',    listName: 'Precio_Venta' },
   { field: 'PL_Precio_Especial', type: 'priceList',  required: false, label: 'Precio_Especial (Lista 3)',  defaultErp: 'Precio_Especial', listName: 'Precio_Especial' },
   { field: 'PL_Precio4',         type: 'priceList',  required: false, label: 'Precio4 (Lista 4)',          defaultErp: 'Precio4',         listName: 'Precio4' },
+  // Listas de descuentos (no van a /products, sino a /discountlistdetails)
+  { field: 'DL_Desc_Precio_Venta',   type: 'discountList',      listId: 1, required: false, label: 'Lista Descto 1 — Desc_Precio_Venta (% Venta)',    defaultErp: null },
+  { field: 'DL_Desc_Precio_Espec',   type: 'discountList',      listId: 2, required: false, label: 'Lista Descto 2 — Desc_Precio_Espec (% Especial)', defaultErp: null },
+  { field: 'DL_Desc_Precio4',        type: 'discountList',      listId: 3, required: false, label: 'Lista Descto 3 — Desc_Precio4 (% Lista 4)',         defaultErp: null },
+  { field: 'DL_Desc_Proveedor',      type: 'discountList',      listId: 4, required: false, label: 'Lista Descto 4 — Desc_Proveedor (% Gerente)',       defaultErp: null },
+  { field: 'DL_PorcentajeDescuento', type: 'discountList',      listId: 5, required: false, label: 'Lista Descto 5 — PorcentajeDescuento (% Pricing)',  defaultErp: null },
+  { field: 'DL_Encargado_Pricing',   type: 'discountListFixed', listId: 6, required: false, label: 'Lista Descto 6 — Encargado Pricing (100% Fijo)',    fixedValue: '100.00' },
 ];
 
 async function mapArticulo(row) {
@@ -79,10 +86,12 @@ async function mapArticulo(row) {
   for (const def of PS_FIELDS) {
     const { field, type, defaultErp, defaultFixed, fixedValue } = def;
 
-    if (type === 'priceList') {
-      const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
-      const raw = erpCol ? (row[erpCol] ?? '') : '';
-      priceListsMapped[def.listName] = parseFloat(raw) || 0;
+    if (type === 'priceList' || type === 'discountList' || type === 'discountListFixed') {
+      if (type === 'priceList') {
+        const erpCol = fieldMap[field] !== undefined ? fieldMap[field] : defaultErp;
+        const raw = erpCol ? (row[erpCol] ?? '') : '';
+        priceListsMapped[def.listName] = parseFloat(raw) || 0;
+      }
       continue;
     }
 
@@ -166,7 +175,7 @@ async function mapArticulo(row) {
   // Sobrescribir CategoryId específico según la clasificación lógica original
   payload['CategoryId'] = categoryId;
 
-  return { payload, priceListsMapped };
+  return { payload, priceListsMapped, fieldMap: m.fieldMap };
 }
 
 async function sync(cambio) {
@@ -183,6 +192,7 @@ async function sync(cambio) {
   // Compatibilidad con si alguien llama a mapArticulo esperando solo payload (aunque aquí usamos el objeto)
   const payload = mapped.payload ?? mapped;
   const priceListsMapped = mapped.priceListsMapped ?? {};
+  const fieldMapObj = mapped.fieldMap ?? {};
 
   // PowerSales solo acepta POST para crear/actualizar productos
   await ps.post('/products', { data: [payload] });
@@ -214,11 +224,108 @@ async function sync(cambio) {
       };
     });
     await ps.post('/pricelistsdetails', { data: pldData });
-    
-    return { product: payload, priceListsDetails: pldData };
   }
 
-  return payload;
+  // 3. Armar y enviar los detalles de 6 listas de descuentos para este artículo
+  const skuVal = String(row['Clave_Articulo'] ?? '').trim();
+
+  const getDiscVal = (fieldKey, defaultErpCol = null) => {
+    const erpCol = (fieldMapObj[fieldKey] !== undefined && fieldMapObj[fieldKey] !== null && fieldMapObj[fieldKey] !== '')
+      ? fieldMapObj[fieldKey]
+      : defaultErpCol;
+
+    let rawVal = 0;
+    if (erpCol && row[erpCol] !== undefined && row[erpCol] !== null) {
+      rawVal = row[erpCol];
+    } else if (erpCol) {
+      const foundKey = Object.keys(row).find(k => k.toLowerCase() === String(erpCol).toLowerCase());
+      if (foundKey) rawVal = row[foundKey];
+    }
+    return (parseFloat(rawVal) || 0).toFixed(2);
+  };
+
+  const discountDetailsData = [
+    {
+      DiscountListId: 1,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio_Venta', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 2,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio_Espec', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 3,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio4', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 4,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Proveedor', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 5,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_PorcentajeDescuento', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 6,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: "100.00",
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    }
+  ];
+
+  try {
+    await ps.post('/discountlistdetails', { data: discountDetailsData });
+    console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
+  } catch (discErr) {
+    try {
+      await ps.post('/discountlistdetail', { data: discountDetailsData });
+      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
+    } catch (err2) {
+      console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
+    }
+  }
+
+  return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
 }
 
 module.exports = { sync, mapArticulo, PS_FIELDS };
