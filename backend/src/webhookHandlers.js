@@ -5,6 +5,7 @@ const { PS_FIELDS: CLIENTE_FIELDS }  = require('./handlers/cliente');
 const { PS_FIELDS_CABECERA, PS_FIELDS_DETALLE } = require('./handlers/pedido');
 const { getFieldMapping, getConfig, saveWebhookLog: saveLogDb } = require('./localdb');
 const { broadcast }                  = require('./websocket');
+const { handleInvoicedSubmodule }    = require('./submodules/invoicedHandler');
 
 async function saveWebhookLog(entidad, clave_registro, datos, estado, error_msg = null) {
   try {
@@ -341,6 +342,9 @@ async function handleOrderInsert(data) {
           }
         }
       }
+
+      // Ejom: Submódulo especial para el estatus INVOICED
+      await handleInvoicedSubmodule(data, existingNoPedido, cabTable, cabCols);
 
       const detailsArr = Array.isArray(data.details) 
         ? data.details 
@@ -1172,6 +1176,11 @@ async function handleOrderInsert(data) {
       }
 
       await connection.commit();
+
+      // Submódulo especial para el estatus INVOICED en pedidos nuevos
+      const targetFolio = nextFolio || (insertResult && insertResult.insertId) || orderNumber;
+      await handleInvoicedSubmodule(data, targetFolio, cabTable, cabCols);
+
       await saveWebhookLog('orders', orderNumber, data, 1, null);
     } catch (txErr) {
       await connection.rollback();

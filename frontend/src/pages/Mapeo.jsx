@@ -19,7 +19,8 @@ const TYPE_BADGE = {
   autoSync:   { label: 'Sync Específico', color: '#8b5cf6' },
   articuloPrice: { label: 'Precio Especial', color: '#ec4899' },
   discountList: { label: 'Lista Descuento', color: '#f59e0b' },
-  discountListFixed: { label: 'Fijo (100%)', color: '#10b981' }
+  discountListFixed: { label: 'Fijo (100%)', color: '#10b981' },
+  autoInvoicedSat: { label: 'Estatus INVOICED', color: '#10b981' }
 };
 
 export default function Mapeo() {
@@ -202,7 +203,12 @@ export default function Mapeo() {
   if (!mapeo)  return <p className="text-muted" style={{ padding: 32 }}>Error al cargar.</p>;
 
   // Resolve which data/fields to show based on active tab
-  const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle' || activeTab === 'cotizacion_cabecera' || activeTab === 'cotizacion_detalle';
+  const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle' || activeTab === 'cotizacion_cabecera' || activeTab === 'cotizacion_detalle' || activeTab === 'pedido_invoiced';
+  const invoicedPsFields = [
+    { field: 'IDMetodoPagoSAT', label: 'Método de Pago SAT', invoicedInfo: 'Asigna PUE (Contado) o PPD (Crédito)', type: 'erpColumn', defaultErp: 'IDMetodoPagoSAT' },
+    { field: 'IDFormaPagoSAT',  label: 'Forma de Pago SAT',  invoicedInfo: 'Asigna código SAT (ej. 01, 02, 03) desde PaymentTypeId', type: 'erpColumn', defaultErp: 'IDFormaPagoSAT' },
+    { field: 'IDUsoCFDISAT',   label: 'Uso de CFDI SAT',   invoicedInfo: 'Asigna código SAT (ej. G01, G03) desde CfdiUse', type: 'erpColumn', defaultErp: 'IDUsoCFDISAT' },
+  ];
   const entityForTab = {
     articulo: 'articulo',
     pricelists: 'articulo',
@@ -212,7 +218,8 @@ export default function Mapeo() {
     pedido_cabecera: 'pedido_cabecera',
     pedido_detalle: 'pedido_detalle',
     cotizacion_cabecera: 'cotizacion_cabecera',
-    cotizacion_detalle: 'cotizacion_detalle'
+    cotizacion_detalle: 'cotizacion_detalle',
+    pedido_invoiced: 'pedido_cabecera'
   };
   const fieldsForTab = {
     articulo: fieldsArt,
@@ -224,6 +231,7 @@ export default function Mapeo() {
     pedido_detalle: { psFields: pedPsFields.pedido_detalle, erpColumns: pedidoCols.pedido_detalle, dbConnected: tablesOk },
     cotizacion_cabecera: { psFields: pedPsFields.cotizacion_cabecera, erpColumns: pedidoCols.cotizacion_cabecera, dbConnected: tablesOk },
     cotizacion_detalle: { psFields: pedPsFields.cotizacion_detalle, erpColumns: pedidoCols.cotizacion_detalle, dbConnected: tablesOk },
+    pedido_invoiced: { psFields: invoicedPsFields, erpColumns: pedidoCols.pedido_cabecera, dbConnected: tablesOk },
   };
   const currentData = mapeo[entityForTab[activeTab] ?? 'articulo'];
   const currentFields = fieldsForTab[activeTab] ?? fieldsArt;
@@ -377,6 +385,11 @@ export default function Mapeo() {
             className={`btn ${activeTab === 'cotizacion_detalle' ? 'btn--cyan' : 'btn--outline'}`} 
             onClick={() => { setActiveTab('cotizacion_detalle'); setFilter(''); }}>
             📝 Cotización (Renglones)
+          </button>
+          <button 
+            className={`btn ${activeTab === 'pedido_invoiced' ? 'btn--cyan' : 'btn--outline'}`} 
+            onClick={() => { setActiveTab('pedido_invoiced'); setFilter(''); }}>
+            🧾 Submódulo (Invoiced / SAT)
           </button>
         </div>
 
@@ -547,15 +560,33 @@ export default function Mapeo() {
                     } : {} )
                   };
                   control = (
-                    <select value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
-                      disabled={!dbConnected}
-                      style={selectStyle}>
-                      <option value="">(sin mapear — vacío)</option>
-                      {!dbConnected && cur && !erpCols.includes(cur) && (
-                        <option value={cur}>{cur} (Guardado)</option>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <select value={cur} onChange={e => setFieldMapVal(activeTab, field, e.target.value)}
+                        disabled={!dbConnected}
+                        style={selectStyle}>
+                        <option value="">(sin mapear — vacío)</option>
+                        {!dbConnected && cur && !erpCols.includes(cur) && (
+                          <option value={cur}>{cur} (Guardado)</option>
+                        )}
+                        {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
+                      </select>
+                      {def.invoicedInfo && (
+                        <span style={{
+                          fontSize: 11,
+                          color: '#10b981',
+                          background: 'rgba(16, 185, 129, 0.12)',
+                          padding: '4px 10px',
+                          borderRadius: 16,
+                          fontWeight: 600,
+                          border: '1px solid rgba(16, 185, 129, 0.35)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5
+                        }}>
+                          ⚡ {def.invoicedInfo}
+                        </span>
                       )}
-                      {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
-                    </select>
+                    </div>
                   );
                 }
 
