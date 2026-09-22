@@ -92,16 +92,7 @@ Abre `http://localhost:5173`
 ## Variables de entorno (backend/.env)
 
 ```env
-MYSQL_HOST=192.168.60.42
-MYSQL_PORT=3306
-MYSQL_DB=aiesa
-MYSQL_USER=root
-MYSQL_PASS=
-PS_BASE_URL=https://api.dev.powersales.cloud/api/grupoascencio
-PS_TOKEN=438|RJjhTTLgA6yDcJChu5W8bjfJU6scO0LyEBAOcUyd
-PS_EMPRESA=00001
-PORT=3001
-WS_PORT=3002
+
 ```
 
 ---
