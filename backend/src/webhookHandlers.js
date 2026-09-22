@@ -423,7 +423,6 @@ async function handleOrderInsert(data) {
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
             setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
             setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
-            setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
             setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
             setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
 
@@ -506,7 +505,6 @@ async function handleOrderInsert(data) {
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
                 setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
-                setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                 setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
 
@@ -792,7 +790,6 @@ async function handleOrderInsert(data) {
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
                 setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
-                setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                 setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                 setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
                 setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
@@ -985,7 +982,6 @@ async function handleOrderInsert(data) {
                   setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Cant_Facturada', 0.0);
                   setIfColExists(rowPairsMap, cotDetCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
-                  setIfColExists(rowPairsMap, cotDetCols, 'Descuento', Number(item.Discount1 || 0));
                   setIfColExists(rowPairsMap, cotDetCols, 'Fech_Captura', todayStr);
                   setIfColExists(rowPairsMap, cotDetCols, 'Hora_Captura', timeStr);
                   setIfColExists(rowPairsMap, cotDetCols, 'PL_3', precioEspecialVal);
@@ -1158,7 +1154,6 @@ async function handleOrderInsert(data) {
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturar', Number(item.QtyOrdered || item.Qty || 0));
           setIfColExists(rowPairsMap, detCols, 'Cant_Facturada', 0.0);
           setIfColExists(rowPairsMap, detCols, 'Costo_Unitario', Number(item.PriceGross ?? item.Price ?? item.pricegross ?? 0));
-          setIfColExists(rowPairsMap, detCols, 'Descuento', Number(item.Discount1 || 0));
           setIfColExists(rowPairsMap, detCols, 'Fech_Captura', todayStr);
           setIfColExists(rowPairsMap, detCols, 'Hora_Captura', timeStr);
           setIfColExists(rowPairsMap, detCols, 'PL_3', precioEspecialVal);
