@@ -98,6 +98,7 @@ export default function Payload() {
           <option value="cliente">cliente</option>
           <option value="surtidopedido">surtidopedido</option>
           <option value="proveedor">proveedor</option>
+          <option value="Tipocamb">Tipocamb</option>
         </select>
 
         <select
