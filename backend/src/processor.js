@@ -8,6 +8,7 @@ const articuloHandler = require('./handlers/articulo');
 const articuloalmHandler = require('./handlers/articuloalm');
 const clienteHandler = require('./handlers/cliente');
 const surtidopedidoHandler = require('./handlers/surtidopedido');
+const tipocambHandler = require('./handlers/tipocamb');
 
 /** Mapa de handlers por nombre de tabla */
 const HANDLERS = {
@@ -15,6 +16,8 @@ const HANDLERS = {
   articuloalm: articuloalmHandler,
   clientes: clienteHandler,
   surtidopedido: surtidopedidoHandler,
+  tipocamb: tipocambHandler,
+  Tipocamb: tipocambHandler,
 };
 
 /** Estado en memoria del processor (runtime stats) */
