@@ -25,11 +25,16 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
 
   console.log(`[SUBMÓDULO INVOICED] Estatus INVOICED detectado para No_Pedido: ${targetNoPedido}`);
 
-  // 1. IDMetodoPagoSAT: SI es CONTADO -> PUE, Si es CREDITO -> PPD
+  // 1. IDMetodoPagoSAT: SI es CONTADO / PUE -> PUE, Si es CREDITO / PPD -> PPD
   let rawPaymentVal = String(
+    data.paymenttypeSAT ||
+    data.paymentTypeSAT ||
+    data.PaymentTypeSAT ||
     data.IDMetodoPagoSAT ||
     data.PaymentType ||
     data.Payment ||
+    data.invoice?.paymenttypeSAT ||
+    data.invoice?.PaymentTypeSAT ||
     (data.CustomerId && data.CustomerId.IsCredit !== undefined ? (Number(data.CustomerId.IsCredit) === 1 ? 'CREDITO' : 'CONTADO') : '')
   ).trim().toUpperCase();
 
