@@ -206,7 +206,7 @@ export default function Mapeo() {
   const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle' || activeTab === 'cotizacion_cabecera' || activeTab === 'cotizacion_detalle' || activeTab === 'pedido_invoiced';
   const invoicedPsFields = [
     { field: 'IDMetodoPagoSAT', label: 'Método de Pago SAT', invoicedInfo: 'Asigna PUE (Contado) o PPD (Crédito)', type: 'erpColumn', defaultErp: 'IDMetodoPagoSAT' },
-    { field: 'IDFormaPagoSAT',  label: 'Forma de Pago SAT',  invoicedInfo: 'Asigna código SAT (ej. 01, 02, 03) desde PaymentTypeId', type: 'erpColumn', defaultErp: 'IDFormaPagoSAT' },
+    { field: 'IDFormaPagoSAT',  label: 'Forma de Pago SAT',  invoicedInfo: 'Asigna código SAT (ej. 01, 03, 99) desde PaymentTypeSAT', type: 'erpColumn', defaultErp: 'IDFormaPagoSAT' },
     { field: 'IDUsoCFDISAT',   label: 'Uso de CFDI SAT',   invoicedInfo: 'Asigna código SAT (ej. G01, G03) desde CfdiUse', type: 'erpColumn', defaultErp: 'IDUsoCFDISAT' },
   ];
   const entityForTab = {

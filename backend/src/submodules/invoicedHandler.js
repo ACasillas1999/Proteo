@@ -3,21 +3,21 @@ const { query } = require('../db');
 const { getFieldMapping } = require('../localdb');
 
 /**
- * Submódulo especial exclusivo para cuando el webhook llega en estatus INVOICED.
- * Escribe únicamente en 3 campos dentro de la tabla cbpedvta:
+ * Submódulo especial exclusivo para cuando el webhook llega en estatus INVOICED (o trae objeto invoice).
+ * Escribe únicamente en 3 campos dentro de la tabla cbpedvta y no modifica nada más:
  * - IDMetodoPagoSAT:
- *     SI es CONTADO -> 'PUE'
- *     SI es CREDITO -> 'PPD'
+ *     SI es CONTADO / PUE -> 'PUE'
+ *     SI es CREDITO / PPD -> 'PPD'
  * - IDFormaPagoSAT:
- *     Toma PaymentTypeId de PowerSales (formateado a 2 dígitos)
+ *     Toma PaymentTypeId de PowerSales / invoice (formateado a 2 dígitos)
  * - IDUsoCFDISAT:
- *     Toma CfdiUse de PowerSales (ej. 'G01', 'G03')
+ *     Toma CfdiUse de PowerSales / invoice (ej. 'G01', 'G03')
  */
 async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvta', cabCols = []) {
   const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
   const statusIdNum = parseInt(data.StatusId);
 
-  // Verificar si el pedido viene en estatus INVOICED
+  // Verificar si el pedido viene en estatus INVOICED o trae objeto invoice
   const isInvoiced = statusNameVal === 'INVOICED' || statusIdNum === 7 || data.invoice !== undefined;
   if (!isInvoiced) {
     return false;
@@ -27,14 +27,15 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
 
   // 1. IDMetodoPagoSAT: SI es CONTADO / PUE -> PUE, Si es CREDITO / PPD -> PPD
   let rawPaymentVal = String(
+    data.invoice?.paymenttypeSAT ||
+    data.invoice?.paymentTypeSAT ||
+    data.invoice?.PaymentTypeSAT ||
     data.paymenttypeSAT ||
     data.paymentTypeSAT ||
     data.PaymentTypeSAT ||
     data.IDMetodoPagoSAT ||
     data.PaymentType ||
     data.Payment ||
-    data.invoice?.paymenttypeSAT ||
-    data.invoice?.PaymentTypeSAT ||
     (data.CustomerId && data.CustomerId.IsCredit !== undefined ? (Number(data.CustomerId.IsCredit) === 1 ? 'CREDITO' : 'CONTADO') : '')
   ).trim().toUpperCase();
 
@@ -47,21 +48,31 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
     idMetodoPagoSAT = rawPaymentVal === 'PPD' ? 'PPD' : 'PUE';
   }
 
-  // 2. IDUsoCFDISAT: CfdiUse de PowerSales (ej. 'G01', 'G03')
+  // 2. IDUsoCFDISAT: CfdiUse de PowerSales / invoice (ej. 'G01', 'G03')
   const idUsoCFDISAT = String(
-    data.IDUsoCFDISAT ||
-    data.CfdiUse ||
     data.invoice?.CfdiUse ||
     data.invoice?.cfdiuse ||
+    data.invoice?.Cfdiuse ||
+    data.CfdiUse ||
+    data.cfdiuse ||
+    data.IDUsoCFDISAT ||
     ''
   ).trim() || null;
 
-  // 3. IDFormaPagoSAT: PaymentTypeId de PowerSales (ej. '01', '02', '03')
+  // 3. IDFormaPagoSAT: PaymentTypeSAT (ej. '01', '03', '99')
   let rawPaymentTypeId =
+    data.invoice?.payments?.[0]?.PaymentTypeSAT ??
+    data.invoice?.payments?.[0]?.paymentTypeSAT ??
+    data.invoice?.payments?.[0]?.paymenttypesat ??
+    data.invoice?.PaymentTypeSAT ??
+    data.invoice?.paymentTypeSAT ??
+    data.invoice?.paymenttypesat ??
+    data.PaymentTypeSAT ??
+    data.paymentTypeSAT ??
+    data.paymenttypesat ??
     data.IDFormaPagoSAT ??
-    data.PaymentTypeId ??
     data.invoice?.payments?.[0]?.PaymentTypeId ??
-    data.payments?.[0]?.PaymentTypeId;
+    data.PaymentTypeId;
 
   let idFormaPagoSAT = null;
   if (rawPaymentTypeId !== undefined && rawPaymentTypeId !== null && rawPaymentTypeId !== '') {
