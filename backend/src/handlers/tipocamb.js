@@ -14,7 +14,6 @@ async function sync(cambio) {
   }
 
   // Buscar el registro en Tipocamb por fecha
-  // clave_registro puede venir como 'YYYY-MM-DD' o fecha completa
   const [rows] = await query(
     `SELECT * FROM Tipocamb WHERE DATE_FORMAT(Fecha, '%Y-%m-%d') = ? OR Fecha = ? LIMIT 1`,
     [clave_registro, clave_registro]
@@ -40,17 +39,20 @@ async function sync(cambio) {
   }
 
   // Rate: Preferir DOF, si no existe o es 0 usar Tipo_Cambio
-  const rateVal = parseFloat(row.DOF) > 0 ? parseFloat(row.DOF) : parseFloat(row.Tipo_Cambio || 0);
+  const numRate = parseFloat(row.DOF) > 0 ? parseFloat(row.DOF) : parseFloat(row.Tipo_Cambio || 0);
 
-  if (!rateVal || isNaN(rateVal)) {
+  if (!numRate || isNaN(numRate)) {
     throw new Error(`[SYNC TIPOCAMB] Valor de Tipo de Cambio / DOF inválido en BD: ${row.DOF} / ${row.Tipo_Cambio}`);
   }
 
   const payload = {
-    Currency: 'USD',
-    Rate: rateVal,
+    Currency: "USD",
+    Rate: numRate.toFixed(4),
+    RateBuy: "0.0000",
+    RateSell: "0.0000",
     Date: dateStr,
-    CurrencyBase: 'MXN'
+    CurrencyBase: "MXN",
+    CreatedBy: 15
   };
 
   console.log(`[SYNC TIPOCAMB] Enviando tipo de cambio a PowerSales (${dateStr}):`, payload);

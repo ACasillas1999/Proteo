@@ -6,15 +6,18 @@ const axios = require('axios');
 // SCRIPT DE PRUEBA: POST A POWERSALES (CURRENCYEXCHANGE)
 // =============================================================================
 
-// Puedes modificar estos valores para tus pruebas:
+// Campos exactos según la estructura de PowerSales:
 const TEST_DATA = {
   Currency: "USD",
-  Rate: 20.35,
+  Rate: "18.0100",
+  RateBuy: "0.0000",
+  RateSell: "0.0000",
   Date: "2026-09-23",
-  CurrencyBase: "MXN"
+  CurrencyBase: "MXN",
+  CreatedBy: 15
 };
 
-// URL objetivo (puedes cambiar a QA o DEV)
+// URL objetivo
 const TARGET_URL = process.env.PS_BASE_URL 
   ? `${process.env.PS_BASE_URL}/currencyexchange`
   : "https://api.qa.powersales.cloud/api/grupoascencio/currencyexchange";
@@ -59,16 +62,13 @@ async function enviarPost() {
     console.log("=================================================================");
 
     if (error.response) {
-      // El servidor respondió con un código fuera del rango 2xx (ej. 400, 401, 422, 500)
       console.log(`📊 HTTP Status Code: ${error.response.status} ${error.response.statusText}`);
       console.log(`📄 Respuesta del Servidor (Error Data):`);
       console.log(JSON.stringify(error.response.data, null, 2));
     } else if (error.request) {
-      // La petición fue enviada pero el servidor no respondió a tiempo (Timeout / Sin respuesta)
       console.log(`⚠️ Sin respuesta del servidor (Timeout alcanzado tras ${ms} ms)`);
       console.log(`Detalle: ${error.message}`);
     } else {
-      // Error al configurar la petición
       console.log(`⚠️ Error en la configuración: ${error.message}`);
     }
     console.log("=================================================================");
