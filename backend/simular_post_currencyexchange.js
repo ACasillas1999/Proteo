@@ -43,7 +43,7 @@ async function enviarPost() {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      timeout: 35000 // 35 segundos de timeout máximo
+      timeout: 90000 // 90 segundos de timeout máximo
     });
 
     const ms = Date.now() - t0;
