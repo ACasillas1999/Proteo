@@ -8,7 +8,7 @@ const ps = axios.create({
     'Content-Type': 'application/json',
     Accept:         'application/json',
   },
-  timeout: 30_000,
+  timeout: 90_000, // 90 segundos para peticiones a PowerSales
 });
 
 // Normaliza errores HTTP para mensajes legibles

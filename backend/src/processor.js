@@ -181,7 +181,7 @@ let _pollerTimer = null;
 let _isPolling   = false;
 
 // Timeout de seguridad: si una vuelta del poller tarda mas de este tiempo, se libera el lock
-const POLL_TIMEOUT_MS = 90_000;
+const POLL_TIMEOUT_MS = 120_000;
 
 async function pollPendingChanges() {
   if (_isPolling || config.isPaused()) return;
