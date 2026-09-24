@@ -712,9 +712,9 @@ async function handleOrderInsert(data) {
       const todayStr = new Date().toISOString().split('T')[0];
       const timeStr = new Date().toTimeString().split(' ')[0];
 
-      // A. PROCESAR COTIZACIÓN (si StatusId es 11 o 38)
+      // A. PROCESAR COTIZACIÓN (si StatusId es 11, 38 o 41)
       let nextCotiza = null;
-      if (statusIdVal === 11 || statusIdVal === 38) {
+      if (statusIdVal === 11 || statusIdVal === 38 || statusIdVal === 41) {
         if (cotCabTable && (await tableExists(cotCabTable))) {
           // Verificar si ya existía en cbcot por IDPs
           const [cotExistingRows] = await connection.execute(
@@ -1011,15 +1011,15 @@ async function handleOrderInsert(data) {
         }
       }
 
-      // B. SI EL ESTATUS NO ES 38: No crear pedido en cbpedvta
-      if (statusIdVal !== 38) {
-        console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / Cotización Aprobada). No se crea registro en '${cabTable}'.`);
+      // B. SI EL ESTATUS NO ES 38 NI 41: No crear pedido en cbpedvta
+      if (statusIdVal !== 38 && statusIdVal !== 41) {
+        console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / 41). No se crea registro en '${cabTable}'.`);
         await connection.commit();
         await saveWebhookLog('orders', orderNumber, data, 1, null);
         return;
       }
 
-      // C. PROCESAR Y CREAR PEDIDO (StatusId === 38)
+      // C. PROCESAR Y CREAR PEDIDO (StatusId === 38 || StatusId === 41)
       // Buscar si existe una Cotización previa para vincular No_Cotiza
       if (cotCabTable && (await tableExists(cotCabTable))) {
         try {
@@ -1031,12 +1031,13 @@ async function handleOrderInsert(data) {
             nextCotiza = cotPrevRows[0].No_Cotiza;
           }
         } catch (cotPrevErr) {
-          console.error('[WEBHOOK] Error buscando Cotización previa para asociar a Pedido 38:', cotPrevErr.message);
+          console.error('[WEBHOOK] Error buscando Cotización previa para asociar a Pedido:', cotPrevErr.message);
         }
       }
 
       let nextFolio = null;
       let insertResult = null;
+      const initialDistVal = statusIdVal === 41 ? 0 : 1;
 
       if (cabTable.toLowerCase() === 'cbpedvta') {
         const [ctrlRows] = await connection.execute("SELECT Consec_Num FROM ctrlcons WHERE Tipo = 'NPED' FOR UPDATE");
@@ -1055,7 +1056,7 @@ async function handleOrderInsert(data) {
 
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, 1);
+          headerPairsMap.set(realDistCol, initialDistVal);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
@@ -1070,11 +1071,11 @@ async function handleOrderInsert(data) {
         insertResult = insertRes;
 
         await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'NPED'", [nextFolio]);
-        console.log(`[WEBHOOK] Pedido insertado con Folio (No_Pedido): ${nextFolio} (StatusId 38)`);
+        console.log(`[WEBHOOK] Pedido insertado con Folio (No_Pedido): ${nextFolio} (StatusId ${statusIdVal} - Distribuido: ${initialDistVal})`);
       } else {
         const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
         if (realDistCol) {
-          headerPairsMap.set(realDistCol, 1);
+          headerPairsMap.set(realDistCol, initialDistVal);
         }
 
         const headerPairs = Array.from(headerPairsMap.entries());
@@ -1087,7 +1088,7 @@ async function handleOrderInsert(data) {
 
         const [insertRes] = await connection.execute(`INSERT INTO \`${cabTable}\` (${colsSql}) VALUES (${placeholders})`, vals);
         insertResult = insertRes;
-        console.log(`[WEBHOOK] Registro insertado en '${cabTable}' (StatusId 38)`);
+        console.log(`[WEBHOOK] Registro insertado en '${cabTable}' (StatusId ${statusIdVal} - Distribuido: ${initialDistVal})`);
       }
 
       // Renglones del pedido
