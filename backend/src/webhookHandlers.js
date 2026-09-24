@@ -656,9 +656,26 @@ async function handleOrderInsert(data) {
     const totalTaxVal    = Number(data.TotalTax || 0);
     const calculatedSubtotal = Math.max(0, Number((totalAmountVal - totalTaxVal).toFixed(4)));
 
+    const rawCustomerNumber = String(
+      customerNumber || 
+      getPath(data, 'CustomerId.CustomerNumber') || 
+      getPath(data, 'CustomerId.Id') || 
+      data.CustomerNumber || 
+      getPath(data, 'CustomerNumber') || 
+      ''
+    ).trim();
+    const isNotaDeVenta = rawCustomerNumber === '999';
+    const ivaPorcentajeVal = isNotaDeVenta ? 0 : 16;
+
+    if (isNotaDeVenta) {
+      console.log(`[WEBHOOK] Cliente ${rawCustomerNumber} detectado como NOTA DE VENTA -> Mapeo especial IVA_Porcentaje = 0`);
+    } else {
+      console.log(`[WEBHOOK] Cliente ${rawCustomerNumber || 'N/A'} (Facturable) -> Mapeo IVA_Porcentaje = ${ivaPorcentajeVal}`);
+    }
+
     forceColValue(headerPairsMap, cabCols, 'Subtotal', calculatedSubtotal);
     forceColValue(headerPairsMap, cabCols, 'Total', totalAmountVal);
-    forceColValue(headerPairsMap, cabCols, 'IVA_Porcentaje', 16);
+    forceColValue(headerPairsMap, cabCols, 'IVA_Porcentaje', ivaPorcentajeVal);
 
     if (coCrVal) {
       setIfColExists(headerPairsMap, cabCols, 'credito_contado', coCrVal);
@@ -869,7 +886,7 @@ async function handleOrderInsert(data) {
 
               forceColValue(headerCotPairsMap, cotCabCols, 'Subtotal', calculatedSubtotal);
               forceColValue(headerCotPairsMap, cotCabCols, 'Total', totalAmountVal);
-              forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', 16);
+              forceColValue(headerCotPairsMap, cotCabCols, 'IVA_Porcentaje', ivaPorcentajeVal);
 
               if (coCrVal) {
                 setIfColExists(headerCotPairsMap, cotCabCols, 'credito_contado', coCrVal);
