@@ -27,6 +27,12 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
 
   // 1. IDMetodoPagoSAT: SI es CONTADO / PUE -> PUE, Si es CREDITO / PPD -> PPD
   let rawPaymentVal = String(
+    data.invoice?.PaymentMethod ||
+    data.invoice?.paymentMethod ||
+    data.invoice?.paymentmethod ||
+    data.PaymentMethod ||
+    data.paymentMethod ||
+    data.paymentmethod ||
     data.invoice?.paymenttypeSAT ||
     data.invoice?.paymentTypeSAT ||
     data.invoice?.PaymentTypeSAT ||
@@ -82,6 +88,26 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
     } else {
       idFormaPagoSAT = String(rawPaymentTypeId).trim();
     }
+  }
+
+  // Regla especial para Cliente 999 (Nota de Venta): IDMetodoPagoSAT = 'PUE' e IDUsoCFDISAT = 'S01'
+  const rawCustomerNumber = String(
+    data.CustomerId?.CustomerNumber ||
+    data.CustomerId?.Id ||
+    data.CustomerNumber ||
+    data.invoice?.CustomerId?.CustomerNumber ||
+    ''
+  ).trim();
+  if (rawCustomerNumber === '999') {
+    console.log(`[SUBMÓDULO INVOICED] Cliente 999 (Nota de Venta) detectado -> Forzando IDMetodoPagoSAT = 'PUE' e IDUsoCFDISAT = 'S01'`);
+    idMetodoPagoSAT = 'PUE';
+    idUsoCFDISAT = 'S01';
+  }
+
+  // Regla especial para Crédito (PPD): IDFormaPagoSAT siempre es '99' (Por definir)
+  if (idMetodoPagoSAT === 'PPD') {
+    console.log(`[SUBMÓDULO INVOICED] Crédito (PPD) detectado -> Forzando IDFormaPagoSAT = '99'`);
+    idFormaPagoSAT = '99';
   }
 
   console.log(`[SUBMÓDULO INVOICED] Valores mapeados para No_Pedido ${targetNoPedido}:`, {

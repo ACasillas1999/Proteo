@@ -56,9 +56,9 @@ const PS_FIELDS_CABECERA = [
   { field: 'RouteId.Id',                type: 'erpColumn', required: false, label: 'Ruta — Id interno PowerSales' },
 
   // Campos del Submódulo Estatus INVOICED / SAT
-  { field: 'IDMetodoPagoSAT', type: 'erpColumn', required: false, label: 'Método de Pago SAT (PUE si Contado / PPD si Crédito)', defaultErp: 'IDMetodoPagoSAT' },
-  { field: 'IDFormaPagoSAT',  type: 'erpColumn', required: false, label: 'Forma de Pago SAT (01, 03, 99, etc. desde PaymentTypeSAT)', defaultErp: 'IDFormaPagoSAT' },
-  { field: 'IDUsoCFDISAT',   type: 'erpColumn', required: false, label: 'Uso de CFDI SAT (G01, G03, etc.)', defaultErp: 'IDUsoCFDISAT' },
+  { field: 'IDMetodoPagoSAT', type: 'erpColumn', required: false, label: 'Método de Pago SAT (PUE Contado / PPD Crédito. Forzado a PUE si Cliente 999)', defaultErp: 'IDMetodoPagoSAT' },
+  { field: 'IDFormaPagoSAT',  type: 'erpColumn', required: false, label: 'Forma de Pago SAT (01, 03, etc. desde PaymentTypeSAT / Forzado a 99 si es Crédito PPD)', defaultErp: 'IDFormaPagoSAT' },
+  { field: 'IDUsoCFDISAT',   type: 'erpColumn', required: false, label: 'Uso de CFDI SAT (G01, G03, etc. desde CfdiUse / Forzado a S01 si Cliente 999)', defaultErp: 'IDUsoCFDISAT' },
 ];
 
 // Cada elemento del arreglo `details[]` (no `details_promo`, que duplica info anidada)

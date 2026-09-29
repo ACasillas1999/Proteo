@@ -205,9 +205,9 @@ export default function Mapeo() {
   // Resolve which data/fields to show based on active tab
   const isPedidoTab = activeTab === 'pedido_cabecera' || activeTab === 'pedido_detalle' || activeTab === 'cotizacion_cabecera' || activeTab === 'cotizacion_detalle' || activeTab === 'pedido_invoiced';
   const invoicedPsFields = [
-    { field: 'IDMetodoPagoSAT', label: 'Método de Pago SAT', invoicedInfo: 'Asigna PUE (Contado) o PPD (Crédito)', type: 'erpColumn', defaultErp: 'IDMetodoPagoSAT' },
-    { field: 'IDFormaPagoSAT',  label: 'Forma de Pago SAT',  invoicedInfo: 'Asigna código SAT (ej. 01, 03, 99) desde PaymentTypeSAT', type: 'erpColumn', defaultErp: 'IDFormaPagoSAT' },
-    { field: 'IDUsoCFDISAT',   label: 'Uso de CFDI SAT',   invoicedInfo: 'Asigna código SAT (ej. G01, G03) desde CfdiUse', type: 'erpColumn', defaultErp: 'IDUsoCFDISAT' },
+    { field: 'IDMetodoPagoSAT', label: 'Método de Pago SAT', invoicedInfo: 'PUE (Contado) o PPD (Crédito). Forzado a PUE si Cliente 999', type: 'erpColumn', defaultErp: 'IDMetodoPagoSAT' },
+    { field: 'IDFormaPagoSAT',  label: 'Forma de Pago SAT',  invoicedInfo: 'Código SAT (01, 03, etc.) desde PaymentTypeSAT / Forzado a 99 si es Crédito (PPD)', type: 'erpColumn', defaultErp: 'IDFormaPagoSAT' },
+    { field: 'IDUsoCFDISAT',   label: 'Uso de CFDI SAT',   invoicedInfo: 'Código SAT (G01, G03, etc.) desde CfdiUse / Forzado a S01 si Cliente 999', type: 'erpColumn', defaultErp: 'IDUsoCFDISAT' },
   ];
   const entityForTab = {
     articulo: 'articulo',
@@ -425,6 +425,26 @@ export default function Mapeo() {
             background: 'var(--surface2)', color: '#4ade80', fontWeight: 600,
           }}>● Lista de Precio</span>
         </div>
+
+        {/* Banner informativo para Submódulo Invoiced / SAT */}
+        {activeTab === 'pedido_invoiced' && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: 'var(--radius)',
+            padding: '12px 16px',
+            marginBottom: 16,
+            fontSize: 13,
+            color: '#34d399'
+          }}>
+            <strong>💡 Lógica Automática del Submódulo Estatus INVOICED / SAT:</strong>
+            <ul style={{ margin: '6px 0 0 18px', padding: 0, lineHeight: '1.6', color: 'var(--text-muted)' }}>
+              <li><strong>Prioridad Método de Pago:</strong> Lee <code>PaymentMethod</code> (PUE / PPD) prioritariamente desde el JSON.</li>
+              <li><strong>Cliente 999 (Nota de Venta):</strong> Forzado automático a <code>IDMetodoPagoSAT = 'PUE'</code> e <code>IDUsoCFDISAT = 'S01'</code>.</li>
+              <li><strong>Pedidos a Crédito (PPD):</strong> Forzado automático a <code>IDFormaPagoSAT = '99'</code> (Por definir).</li>
+            </ul>
+          </div>
+        )}
 
         {/* Tabla */}
         <div className="card" style={{ overflow: 'auto' }}>
