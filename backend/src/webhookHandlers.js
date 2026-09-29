@@ -571,7 +571,17 @@ async function handleOrderInsert(data) {
       if (!realCol) continue;
 
       let val = getPath(data, def.field);
+      if (val === undefined && def.field === 'Currency') {
+        val = getPath(data, 'currency') ?? getPath(data, 'invoice.Currency') ?? getPath(data, 'invoice.currency');
+      } else if (val === undefined && def.field === 'CurrencyRate') {
+        val = getPath(data, 'currencyRate') ?? getPath(data, 'Currencyrate') ?? getPath(data, 'ExchangeRate') ?? getPath(data, 'exchangeRate') ?? getPath(data, 'invoice.CurrencyRate') ?? getPath(data, 'invoice.currencyRate');
+      }
       if (val === undefined) continue;
+
+      if (def.field === 'Currency' && val !== null && val !== undefined) {
+        const strVal = String(val).toUpperCase().trim();
+        val = (strVal.includes('USD') || strVal.includes('US') || strVal === '2') ? 2 : 1;
+      }
 
       if (['condicion_pago', 'cond_pago', 'cont_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
         const upperVal = val.toUpperCase().trim();
@@ -840,7 +850,17 @@ async function handleOrderInsert(data) {
                 if (!realCol || realCol === realPKCotCol) continue;
 
                 let val = getPath(data, def.field);
+                if (val === undefined && def.field === 'Currency') {
+                  val = getPath(data, 'currency') ?? getPath(data, 'invoice.Currency') ?? getPath(data, 'invoice.currency');
+                } else if (val === undefined && def.field === 'CurrencyRate') {
+                  val = getPath(data, 'currencyRate') ?? getPath(data, 'Currencyrate') ?? getPath(data, 'ExchangeRate') ?? getPath(data, 'exchangeRate') ?? getPath(data, 'invoice.CurrencyRate') ?? getPath(data, 'invoice.currencyRate');
+                }
                 if (val === undefined) continue;
+
+                if (def.field === 'Currency' && val !== null && val !== undefined) {
+                  const strVal = String(val).toUpperCase().trim();
+                  val = (strVal.includes('USD') || strVal.includes('US') || strVal === '2') ? 2 : 1;
+                }
 
                 if (['cond_pago', 'cont_pago', 'condicion_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
                   const upperVal = val.toUpperCase().trim();

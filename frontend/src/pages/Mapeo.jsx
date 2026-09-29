@@ -590,22 +590,26 @@ export default function Mapeo() {
                         )}
                         {erpCols.map(col => <option key={col} value={col}>{col}</option>)}
                       </select>
-                      {def.invoicedInfo && (
-                        <span style={{
-                          fontSize: 11,
-                          color: '#10b981',
-                          background: 'rgba(16, 185, 129, 0.12)',
-                          padding: '4px 10px',
-                          borderRadius: 16,
-                          fontWeight: 600,
-                          border: '1px solid rgba(16, 185, 129, 0.35)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5
-                        }}>
-                          ⚡ {def.invoicedInfo}
-                        </span>
-                      )}
+                      {(() => {
+                        const infoText = def.invoicedInfo || def.infoBadge || (field === 'Currency' ? 'Convierte MXN|es-MX → 1 y USD|es-US → 2' : null);
+                        if (!infoText) return null;
+                        return (
+                          <span style={{
+                            fontSize: 11,
+                            color: '#10b981',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            padding: '4px 10px',
+                            borderRadius: 16,
+                            fontWeight: 600,
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5
+                          }}>
+                            ⚡ {infoText}
+                          </span>
+                        );
+                      })()}
                     </div>
                   );
                 }
