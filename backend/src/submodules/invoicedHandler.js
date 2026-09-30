@@ -55,7 +55,7 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
   }
 
   // 2. IDUsoCFDISAT: CfdiUse de PowerSales / invoice (ej. 'G01', 'G03')
-  const idUsoCFDISAT = String(
+  let idUsoCFDISAT = String(
     data.invoice?.CfdiUse ||
     data.invoice?.cfdiuse ||
     data.invoice?.Cfdiuse ||
