@@ -254,6 +254,29 @@ async function handleOrderInsert(data) {
       }
     };
 
+    // Extraer y calcular Moneda y Tipo de Cambio globalmente para la función
+    const rawCurrencyStr = String(
+      getPath(data, 'Currency') ?? 
+      getPath(data, 'currency') ?? 
+      getPath(data, 'invoice.Currency') ?? 
+      getPath(data, 'invoice.currency') ?? 
+      getPath(data, 'details_promo.0.order.Currency') ?? 
+      getPath(data, 'details_promo.0.order.currency') ?? 
+      ''
+    ).toUpperCase().trim();
+    const calcMoneda = (rawCurrencyStr.includes('USD') || rawCurrencyStr.includes('US') || rawCurrencyStr === '2') ? 2 : 1;
+
+    const rawRateVal = getPath(data, 'CurrencyRate') ?? 
+      getPath(data, 'currencyRate') ?? 
+      getPath(data, 'Currencyrate') ?? 
+      getPath(data, 'ExchangeRate') ?? 
+      getPath(data, 'exchangeRate') ?? 
+      getPath(data, 'invoice.CurrencyRate') ?? 
+      getPath(data, 'invoice.currencyRate') ?? 
+      getPath(data, 'details_promo.0.order.CurrencyRate') ?? 
+      getPath(data, 'details_promo.0.order.currencyRate');
+    const calcTC = (rawRateVal !== undefined && rawRateVal !== null && rawRateVal !== '' && !isNaN(Number(rawRateVal))) ? Number(rawRateVal) : 1.0;
+
     // Extraer y resolver valor de Condición de Pago (PaymentType / Payment / IsCredit)
     let rawPaymentVal = String(getPath(data, 'PaymentType') || getPath(data, 'Payment') || '').trim().toUpperCase();
     if (!rawPaymentVal || rawPaymentVal === '0.00' || rawPaymentVal === '0') {
@@ -378,6 +401,17 @@ async function handleOrderInsert(data) {
         if (realCondPagoCol && contCreVal) {
           updates.push(`\`${realCondPagoCol}\` = ?`);
           updateParams.push(contCreVal);
+        }
+
+        const realMonedaCol = cabCols.find(c => c.toLowerCase() === 'moneda');
+        if (realMonedaCol) {
+          updates.push(`\`${realMonedaCol}\` = ?`);
+          updateParams.push(calcMoneda);
+        }
+        const realTcCol = cabCols.find(c => ['tipo_cambio', 'tipocambio', 'tc'].includes(c.toLowerCase()));
+        if (realTcCol) {
+          updates.push(`\`${realTcCol}\` = ?`);
+          updateParams.push(calcTC);
         }
 
         if (updates.length > 0) {
@@ -565,7 +599,7 @@ async function handleOrderInsert(data) {
     // 4. Mapear datos para el Pedido Cabecera
     const headerPairsMap = new Map();
     for (const def of PS_FIELDS_CABECERA) {
-      const erpCol = fieldMapCab[def.field];
+      const erpCol = fieldMapCab[def.field] || def.defaultErp;
       if (!erpCol) continue;
       const realCol = cabCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
       if (!realCol) continue;
@@ -576,12 +610,15 @@ async function handleOrderInsert(data) {
       } else if (val === undefined && def.field === 'CurrencyRate') {
         val = getPath(data, 'currencyRate') ?? getPath(data, 'Currencyrate') ?? getPath(data, 'ExchangeRate') ?? getPath(data, 'exchangeRate') ?? getPath(data, 'invoice.CurrencyRate') ?? getPath(data, 'invoice.currencyRate');
       }
-      if (val === undefined) continue;
 
-      if (def.field === 'Currency' && val !== null && val !== undefined) {
-        const strVal = String(val).toUpperCase().trim();
+      if (def.field === 'Currency') {
+        const strVal = String(val ?? '').toUpperCase().trim();
         val = (strVal.includes('USD') || strVal.includes('US') || strVal === '2') ? 2 : 1;
+      } else if (def.field === 'CurrencyRate') {
+        val = (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) ? Number(val) : 1.0;
       }
+
+      if (val === undefined) continue;
 
       if (['condicion_pago', 'cond_pago', 'cont_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
         const upperVal = val.toUpperCase().trim();
@@ -696,6 +733,12 @@ async function handleOrderInsert(data) {
       setIfColExists(headerPairsMap, cabCols, 'cond_pago', contCreVal);
     }
 
+    // Moneda y Tipo de Cambio (con conversiones 1=MXN, 2=USD)
+    forceColValue(headerPairsMap, cabCols, 'Moneda', calcMoneda);
+    forceColValue(headerPairsMap, cabCols, 'Tipo_Cambio', calcTC);
+    forceColValue(headerPairsMap, cabCols, 'TipoCambio', calcTC);
+    forceColValue(headerPairsMap, cabCols, 'TC', calcTC);
+
     setIfColExists(headerPairsMap, cabCols, 'Fech_Captura', todayStr);
     setIfColExists(headerPairsMap, cabCols, 'Hora_Captura', timeStr);
     setIfColExists(headerPairsMap, cabCols, 'Asesor', branchName.substring(0, 6));
@@ -778,6 +821,18 @@ async function handleOrderInsert(data) {
               cotUpdateParams.push(contCreVal);
             }
 
+            const cotMonedaCol = cotCabCols.find(c => c.toLowerCase() === 'moneda');
+            if (cotMonedaCol) {
+              cotUpdates.push(`\`${cotMonedaCol}\` = ?`);
+              cotUpdateParams.push(calcMoneda);
+            }
+
+            const cotTcCol = cotCabCols.find(c => ['tipo_cambio', 'tipocambio', 'tc'].includes(c.toLowerCase()));
+            if (cotTcCol) {
+              cotUpdates.push(`\`${cotTcCol}\` = ?`);
+              cotUpdateParams.push(calcTC);
+            }
+
             if (cotUpdates.length > 0) {
               cotUpdateParams.push(nextCotiza);
               await connection.execute(`UPDATE \`${cotCabTable}\` SET ${cotUpdates.join(', ')} WHERE No_Cotiza = ?`, cotUpdateParams);
@@ -844,7 +899,7 @@ async function handleOrderInsert(data) {
               if (realPKCotCol) headerCotPairsMap.set(realPKCotCol, nextCotiza);
 
               for (const def of PS_FIELDS_CABECERA) {
-                const erpCol = fieldMapCotCab[def.field];
+                const erpCol = fieldMapCotCab[def.field] || (def.field === 'CurrencyRate' ? 'TC' : def.defaultErp);
                 if (!erpCol) continue;
                 const realCol = cotCabCols.find(c => c.toLowerCase() === erpCol.toLowerCase());
                 if (!realCol || realCol === realPKCotCol) continue;
@@ -958,8 +1013,10 @@ async function handleOrderInsert(data) {
               setIfColExists(headerCotPairsMap, cotCabCols, 'FechaProbableCierre', todayStr);
               setIfColExists(headerCotPairsMap, cotCabCols, 'Fecha_Captura', todayStr);
               setIfColExists(headerCotPairsMap, cotCabCols, 'Hora_Captura', timeStr);
-              setIfColExists(headerCotPairsMap, cotCabCols, 'Moneda', 1);
-              setIfColExists(headerCotPairsMap, cotCabCols, 'TC', 1.0);
+              forceColValue(headerCotPairsMap, cotCabCols, 'Moneda', calcMoneda);
+              forceColValue(headerCotPairsMap, cotCabCols, 'TC', calcTC);
+              forceColValue(headerCotPairsMap, cotCabCols, 'Tipo_Cambio', calcTC);
+              forceColValue(headerCotPairsMap, cotCabCols, 'TipoCambio', calcTC);
               setIfColExists(headerCotPairsMap, cotCabCols, 'Contacto', 0);
               setIfColExists(headerCotPairsMap, cotCabCols, 'Dias_Credito', 0);
               setIfColExists(headerCotPairsMap, cotCabCols, 'Aumento_Precio', 0.0);
@@ -981,6 +1038,8 @@ async function handleOrderInsert(data) {
               const cotVals = Array.from(headerCotPairsMap.values());
               const cotPlaceholders = cotCols.map(() => '?').join(', ');
               const cotColsSql = cotCols.map(c => `\`${c}\``).join(', ');
+
+              console.log('[DEBUG COTIZACIÓN INSERT MAP]:', Array.from(headerCotPairsMap.entries()));
 
               await connection.execute(`INSERT INTO \`${cotCabTable}\` (${cotColsSql}) VALUES (${cotPlaceholders})`, cotVals);
               await connection.execute("UPDATE ctrlcons SET Consec_Num = ? WHERE Tipo = 'COT'", [nextCotiza]);
@@ -1103,6 +1162,8 @@ async function handleOrderInsert(data) {
         const vals = headerPairs.map(([, v]) => v);
         const placeholders = cols.map(() => '?').join(', ');
         const colsSql = cols.map(c => `\`${c}\``).join(', ');
+
+        console.log('[DEBUG PEDIDO INSERT MAP]:', Array.from(headerPairsMap.entries()));
 
         const [insertRes] = await connection.execute(`INSERT INTO \`${cabTable}\` (${colsSql}) VALUES (${placeholders})`, vals);
         insertResult = insertRes;

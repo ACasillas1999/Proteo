@@ -120,6 +120,8 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
   const targetMetodoCol = (fieldMapCab['IDMetodoPagoSAT'] !== undefined && fieldMapCab['IDMetodoPagoSAT'] !== '') ? fieldMapCab['IDMetodoPagoSAT'] : 'IDMetodoPagoSAT';
   const targetFormaCol  = (fieldMapCab['IDFormaPagoSAT']  !== undefined && fieldMapCab['IDFormaPagoSAT']  !== '') ? fieldMapCab['IDFormaPagoSAT']  : 'IDFormaPagoSAT';
   const targetUsoCol    = (fieldMapCab['IDUsoCFDISAT']    !== undefined && fieldMapCab['IDUsoCFDISAT']    !== '') ? fieldMapCab['IDUsoCFDISAT']    : 'IDUsoCFDISAT';
+  const targetMonedaCol = (fieldMapCab['Currency'] !== undefined && fieldMapCab['Currency'] !== '') ? fieldMapCab['Currency'] : 'Moneda';
+  const targetTcCol     = (fieldMapCab['CurrencyRate'] !== undefined && fieldMapCab['CurrencyRate'] !== '') ? fieldMapCab['CurrencyRate'] : 'Tipo_Cambio';
 
   const updates = [];
   const params = [];
@@ -140,6 +142,31 @@ async function handleInvoicedSubmodule(data, targetNoPedido, cabTable = 'cbpedvt
   if (realUsoCol && idUsoCFDISAT) {
     updates.push(`\`${realUsoCol}\` = ?`);
     params.push(idUsoCFDISAT);
+  }
+
+  // Actualizar Moneda y Tipo_Cambio si vienen en el payload
+  const rawCurrencyStr = String(
+    data.Currency ?? data.currency ?? data.invoice?.Currency ?? data.invoice?.currency ?? data.details_promo?.[0]?.order?.Currency ?? data.details_promo?.[0]?.order?.currency ?? ''
+  ).toUpperCase().trim();
+  if (rawCurrencyStr) {
+    const calcCurrency = (rawCurrencyStr.includes('USD') || rawCurrencyStr.includes('US') || rawCurrencyStr === '2') ? 2 : 1;
+    const realMonedaCol = cabCols.find(c => c.toLowerCase() === String(targetMonedaCol).toLowerCase() || c.toLowerCase() === 'moneda');
+    if (realMonedaCol) {
+      updates.push(`\`${realMonedaCol}\` = ?`);
+      params.push(calcCurrency);
+    }
+  }
+
+  const rawRateVal = data.CurrencyRate ?? data.currencyRate ?? data.Currencyrate ?? data.ExchangeRate ?? data.exchangeRate ?? data.invoice?.CurrencyRate ?? data.invoice?.currencyRate ?? data.details_promo?.[0]?.order?.CurrencyRate ?? data.details_promo?.[0]?.order?.currencyRate;
+  if (rawRateVal !== undefined && rawRateVal !== null && rawRateVal !== '') {
+    const calcRate = Number(rawRateVal);
+    if (!isNaN(calcRate)) {
+      const realTcCol = cabCols.find(c => c.toLowerCase() === String(targetTcCol).toLowerCase() || c.toLowerCase() === 'tipo_cambio' || c.toLowerCase() === 'tipocambio' || c.toLowerCase() === 'tc');
+      if (realTcCol) {
+        updates.push(`\`${realTcCol}\` = ?`);
+        params.push(calcRate);
+      }
+    }
   }
 
   if (updates.length > 0) {
