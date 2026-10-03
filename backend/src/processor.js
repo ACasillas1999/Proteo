@@ -181,7 +181,7 @@ let _pollerTimer = null;
 let _isPolling   = false;
 
 // Timeout de seguridad: si una vuelta del poller tarda mas de este tiempo, se libera el lock
-const POLL_TIMEOUT_MS = 120_000;
+const POLL_TIMEOUT_MS = 160_000;
 
 async function pollPendingChanges() {
   if (_isPolling || config.isPaused()) return;
@@ -193,9 +193,9 @@ async function pollPendingChanges() {
 
   _isPolling = true;
 
-  // Guardián: si en 90s la función no termina, liberar el lock para no bloquear la cola
+  // Guardián: si en 160s la función no termina, liberar el lock para no bloquear la cola
   const safetyTimer = setTimeout(() => {
-    console.warn('[POLLER] ⚠ Timeout de seguridad alcanzado (90s), liberando lock.');
+    console.warn('[POLLER] ⚠ Timeout de seguridad alcanzado (160s), liberando lock.');
     _isPolling = false;
   }, POLL_TIMEOUT_MS);
 
