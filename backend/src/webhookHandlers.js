@@ -343,32 +343,6 @@ async function handleOrderInsert(data) {
       const statusIdNum = parseInt(data.StatusId);
       const statusNameVal = typeof data.StatusName === 'string' ? data.StatusName.toUpperCase().trim() : '';
 
-      // A. Actualizar Estatus / Distribuido en Pedido Cabecera (solo para estatus de pedido, no Status 11)
-      if (statusIdNum !== 11) {
-        if (statusIdNum === 8 || statusNameVal.includes('CANCEL')) {
-          console.log(`[WEBHOOK] StatusId es 8 / Cancelado. Actualizando 'Estatus_Pedido' a 'C' en No_Pedido: ${existingNoPedido}`);
-          const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
-          if (realEstatusCol) {
-            await query(`UPDATE \`${cabTable}\` SET \`${realEstatusCol}\` = 'C' WHERE No_Pedido = ?`, [existingNoPedido]);
-          }
-        } else if (statusIdNum === 41) {
-          console.log(`[WEBHOOK] StatusId es 41. Actualizando 'Distribuido' a 0 en No_Pedido: ${existingNoPedido}`);
-          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
-          if (realDistCol) {
-            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [0, existingNoPedido]);
-          }
-        } else if (statusIdNum === 38) {
-          console.log(`[WEBHOOK] StatusId es 38. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
-          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
-          if (realDistCol) {
-            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [1, existingNoPedido]);
-          }
-        }
-      }
-
-      // Ejom: Submódulo especial para el estatus INVOICED
-      await handleInvoicedSubmodule(data, existingNoPedido, cabTable, cabCols);
-
       const detailsArr = Array.isArray(data.details) 
         ? data.details 
         : (Array.isArray(data.OrdersDetails) ? data.OrdersDetails : []);
@@ -376,7 +350,7 @@ async function handleOrderInsert(data) {
       const totalAmountVal = Number(data.TotalAmount || 0);
       const calculatedSubtotal = Number(data.SubTotalAmount || (totalAmountVal > 0 ? totalAmountVal / 1.16 : 0));
 
-      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
+      // A. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
       if (statusIdNum !== 11 && detailsArr.length > 0) {
         const realSubtotalCol = cabCols.find(c => c.toLowerCase() === 'subtotal');
         const realTotalCol = cabCols.find(c => c.toLowerCase() === 'total');
@@ -471,6 +445,32 @@ async function handleOrderInsert(data) {
           }
         }
       }
+
+      // B. Actualizar Estatus / Distribuido en Pedido Cabecera (SOLO DESPUÉS DE REFRESCAR RENGLONES)
+      if (statusIdNum !== 11) {
+        if (statusIdNum === 8 || statusNameVal.includes('CANCEL')) {
+          console.log(`[WEBHOOK] StatusId es 8 / Cancelado. Actualizando 'Estatus_Pedido' a 'C' en No_Pedido: ${existingNoPedido}`);
+          const realEstatusCol = cabCols.find(c => c.toLowerCase() === 'estatus_pedido');
+          if (realEstatusCol) {
+            await query(`UPDATE \`${cabTable}\` SET \`${realEstatusCol}\` = 'C' WHERE No_Pedido = ?`, [existingNoPedido]);
+          }
+        } else if (statusIdNum === 41) {
+          console.log(`[WEBHOOK] StatusId es 41. Actualizando 'Distribuido' a 0 en No_Pedido: ${existingNoPedido}`);
+          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
+          if (realDistCol) {
+            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [0, existingNoPedido]);
+          }
+        } else if (statusIdNum === 38) {
+          console.log(`[WEBHOOK] StatusId es 38. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
+          const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
+          if (realDistCol) {
+            await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [1, existingNoPedido]);
+          }
+        }
+      }
+
+      // Ejom: Submódulo especial para el estatus INVOICED
+      await handleInvoicedSubmodule(data, existingNoPedido, cabTable, cabCols);
 
       // C. Actualizar o refrescar Cotización en cbcot y dtcot (si aplica)
       if (cotCabTable && (await tableExists(cotCabTable))) {
