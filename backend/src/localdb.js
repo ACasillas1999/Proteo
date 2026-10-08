@@ -156,6 +156,16 @@ async function migrate() {
              ('cotizacion_detalle_table', 'dtcot')
     `);
 
+    // Seed default mappings for Currency and CurrencyRate
+    await conn.query(`
+      INSERT IGNORE INTO field_mapping (entity, ps_field, erp_column)
+      VALUES 
+        ('pedido_cabecera', 'Currency', 'Moneda'),
+        ('pedido_cabecera', 'CurrencyRate', 'Tipo_Cambio'),
+        ('cotizacion_cabecera', 'Currency', 'Moneda'),
+        ('cotizacion_cabecera', 'CurrencyRate', 'TC')
+    `);
+
     console.log('[LocalDB] ✓ Tablas verificadas en proteo_db');
   } finally {
     conn.release();

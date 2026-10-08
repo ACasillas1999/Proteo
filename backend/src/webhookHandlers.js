@@ -376,8 +376,8 @@ async function handleOrderInsert(data) {
       const totalAmountVal = Number(data.TotalAmount || 0);
       const calculatedSubtotal = Number(data.SubTotalAmount || (totalAmountVal > 0 ? totalAmountVal / 1.16 : 0));
 
-      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11 NI STATUS 41)
-      if (statusIdNum !== 11 && statusIdNum !== 41 && detailsArr.length > 0) {
+      // B. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
+      if (statusIdNum !== 11 && detailsArr.length > 0) {
         const realSubtotalCol = cabCols.find(c => c.toLowerCase() === 'subtotal');
         const realTotalCol = cabCols.find(c => c.toLowerCase() === 'total');
         const updates = [];
