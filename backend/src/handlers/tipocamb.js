@@ -57,11 +57,26 @@ async function sync(cambio) {
 
   console.log(`[SYNC TIPOCAMB] Enviando tipo de cambio a PowerSales (${dateStr}):`, payload);
 
-  const res = await ps.post('/currencyexchange', payload);
-
-  console.log(`[SYNC TIPOCAMB] ✓ PowerSales respondió correctamente:`, res.data?.message || 'OK');
-
-  return { payload, response: res.data };
+  try {
+    const res = await ps.post('/currencyexchange', payload);
+    console.log(`[SYNC TIPOCAMB] ✓ PowerSales respondió correctamente:`, res.data?.message || 'OK');
+    return { payload, response: res.data, wasDuplicate: false };
+  } catch (err) {
+    const errMsg = err.response?.data?.message || err.message || JSON.stringify(err.response?.data || '');
+    if (errMsg.includes('Duplicate entry') || errMsg.includes('1062')) {
+      console.warn(`[SYNC TIPOCAMB] ⚠️ AVISO: El tipo de cambio (${dateStr}) ya había sido insertado previamente en PowerSales (Duplicate entry 1062). Se marca como sincronizado exitosamente.`);
+      return {
+        payload,
+        response: {
+          message: `Ya registrado previamente en PowerSales (${dateStr})`,
+          wasDuplicate: true,
+          detail: errMsg
+        },
+        wasDuplicate: true
+      };
+    }
+    throw err;
+  }
 }
 
 module.exports = { sync };
