@@ -20,7 +20,8 @@ const TYPE_BADGE = {
   articuloPrice: { label: 'Precio Especial', color: '#ec4899' },
   discountList: { label: 'Lista Descuento', color: '#f59e0b' },
   discountListFixed: { label: 'Fijo (100%)', color: '#10b981' },
-  autoInvoicedSat: { label: 'Estatus INVOICED', color: '#10b981' }
+  autoInvoicedSat: { label: 'Estatus INVOICED', color: '#10b981' },
+  autoSurtido: { label: 'Tabla Surtido', color: '#10b981' }
 };
 
 export default function Mapeo() {
@@ -529,6 +530,12 @@ export default function Mapeo() {
                   control = (
                     <span style={{ color: '#ec4899', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
                       🏷️ Precio Especial desde la tabla 'articulo' (columna PL_3 del ERP)
+                    </span>
+                  );
+                } else if (type === 'autoSurtido') {
+                  control = (
+                    <span style={{ color: '#10b981', fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>
+                      ⚡ En sincronización de surtido toma el campo 'Entregada' de la tabla 'surtido'
                     </span>
                   );
                 } else if (type === 'discountListFixed') {

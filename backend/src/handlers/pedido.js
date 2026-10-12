@@ -72,7 +72,7 @@ const PS_FIELDS_DETALLE = [
   { field: 'ProductCode',    type: 'erpColumn', required: false, label: 'Código de producto' },
   { field: 'QtyOrdered',     type: 'erpColumn', required: false, label: 'Cantidad pedida' },
   { field: 'QtyDelivered',   type: 'erpColumn', required: false, label: 'Cantidad entregada' },
-  { field: 'QtyPicked',      type: 'erpColumn', required: false, label: 'Cantidad surtida' },
+  { field: 'QtyPicked',      type: 'autoSurtido', required: false, label: 'Cantidad surtida' },
   { field: 'Price',          type: 'erpColumn', required: false, label: 'Precio' },
   { field: 'PriceGross',     type: 'erpColumn', required: false, label: 'Precio Bruto (PriceGross)' },
   { field: 'SubTotalAmount', type: 'erpColumn', required: false, label: 'Subtotal' },

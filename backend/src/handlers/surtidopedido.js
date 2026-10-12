@@ -112,6 +112,28 @@ async function sync(cambio) {
     [erpNoPedido, clave_registro]
   );
 
+  // Consultar cantidades entregadas desde la tabla 'surtido' para este folio
+  const surtidoMap = new Map();
+  try {
+    const [surtidoRows] = await query(
+      `SELECT Articulo, SUM(Entregada) AS TotalEntregada 
+       FROM surtido 
+       WHERE Folio = ? OR Folio = ? 
+       GROUP BY Articulo`,
+      [erpNoPedido, clave_registro]
+    );
+    for (const sRow of surtidoRows) {
+      if (sRow.Articulo) {
+        surtidoMap.set(String(sRow.Articulo).trim().toLowerCase(), Number(sRow.TotalEntregada || 0));
+      }
+    }
+    if (surtidoRows.length > 0) {
+      console.log(`[SYNC surtidopedido] Se encontraron ${surtidoRows.length} partidas en tabla 'surtido' para Folio ${erpNoPedido}`);
+    }
+  } catch (surtidoErr) {
+    console.error(`[SYNC surtidopedido] Error consultando tabla 'surtido' para Folio ${erpNoPedido}:`, surtidoErr.message);
+  }
+
   const ordersDetails = [];
   for (const row of itemRows) {
     const sku = String(row[skuCol] || '').trim();
@@ -120,10 +142,17 @@ async function sync(cambio) {
     const qtyOrdered = Number(row[qtyCol] || 0);
     const qtyDelivered = Number(row.Cant_Facturada || 0);
 
-    // Si está FULLY_PICKED surtimos todo lo pedido. Si es parcial, lo que está facturado (o fallback a lo pedido si está vacío)
-    let qtyPicked = status === 'FULLY_PICKED' ? qtyOrdered : qtyDelivered;
-    if (qtyPicked === 0) {
-      qtyPicked = qtyOrdered;
+    // QtyPicked: Toma exclusivamente el campo 'Entregada' de la tabla 'surtido'
+    let qtyPicked = 0;
+    const skuKey = sku.toLowerCase();
+    if (surtidoMap.has(skuKey)) {
+      qtyPicked = surtidoMap.get(skuKey);
+    } else {
+      // Fallback si no existe registro en 'surtido' para este artículo
+      qtyPicked = status === 'FULLY_PICKED' ? qtyOrdered : qtyDelivered;
+      if (qtyPicked === 0 && status === 'FULLY_PICKED') {
+        qtyPicked = qtyOrdered;
+      }
     }
 
     const price = Number(row[priceCol] || 0);
