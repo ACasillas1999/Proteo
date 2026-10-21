@@ -55,7 +55,7 @@ const PS_FIELDS = [
   // ── Precios y Crédito ──
   { field: 'PriceListId',             type: 'number',    required: false, label: 'ID Lista de Precios',         defaultErp: null },
   { field: 'PriceListNumber',         type: 'erpColumn', required: false, label: 'Número Lista de Precios',    defaultErp: null },
-  { field: 'IsCredit',                type: 'boolean',   required: false, label: 'Tiene Crédito',              defaultErp: 'OtorgoCredito' },
+  { field: 'IsCredit',                type: 'boolean',   required: false, label: 'Tiene Crédito (CRE=1, CONT=0)', defaultErp: 'Condicion_Pago' },
   { field: 'CreditLimit',             type: 'numStr',    required: false, label: 'Límite de Crédito',          defaultErp: 'Limite_Credito' },
   { field: 'AccountBalance',          type: 'numStr',    required: false, label: 'Saldo de Cuenta',            defaultErp: 'Saldo_Actual' },
 
@@ -100,6 +100,23 @@ async function mapCliente(row) {
       if (exterior) address += ` ${exterior}`;
       if (interior) address += ` Int. ${interior}`;
       payload[field] = address.trim() || null;
+      continue;
+    }
+
+    if (field === 'IsCredit') {
+      const erpCol = (fieldMap[field] !== undefined && fieldMap[field] !== null && fieldMap[field] !== '')
+        ? fieldMap[field]
+        : (defaultErp || 'Condicion_Pago');
+      const rawVal = row[erpCol] !== undefined ? row[erpCol] : row.Condicion_Pago;
+      const strVal = String(rawVal ?? '').trim().toUpperCase();
+
+      if (strVal === 'CRE') {
+        payload[field] = 1;
+      } else if (strVal === 'CONT') {
+        payload[field] = 0;
+      } else {
+        payload[field] = (strVal === '1' || strVal === 'TRUE' || Number(strVal) > 0) ? 1 : 0;
+      }
       continue;
     }
 
