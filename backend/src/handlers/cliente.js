@@ -28,6 +28,7 @@ const PS_FIELDS = [
   { field: 'Email',                     type: 'erpColumn', required: false, label: 'Email',                       defaultErp: 'e_mail' },
   { field: 'InvoiceName',              type: 'text',      required: false, label: 'Razón Social (Facturación)',  defaultErp: 'Razon_Social' },
   { field: 'TIN',                       type: 'text',      required: false, label: 'RFC / Tax ID',                defaultErp: 'RFC' },
+  { field: 'TaxRegimeCatalogId',        type: 'text',      required: false, label: 'Régimen Fiscal (SAT)',        defaultErp: 'RegimenFiscal' },
 
   // ── Dirección ──
   { field: 'Address1',                  type: 'fixed',     required: false, label: 'Dirección 1 (Calle + Números)', fixedValue: 'Automático (Calle + Exterior + Interior)' },
@@ -117,6 +118,17 @@ async function mapCliente(row) {
       } else {
         payload[field] = (strVal === '1' || strVal === 'TRUE' || Number(strVal) > 0) ? 1 : 0;
       }
+      continue;
+    }
+
+    if (field === 'TaxRegimeCatalogId') {
+      const erpCol = (fieldMap[field] !== undefined && fieldMap[field] !== null && fieldMap[field] !== '')
+        ? fieldMap[field]
+        : (defaultErp || 'RegimenFiscal');
+      const rawVal = row[erpCol] !== undefined ? row[erpCol] : row.RegimenFiscal;
+      let val = String(rawVal ?? '').trim();
+      val = val.replace(/^Z/i, '');
+      payload[field] = val || '';
       continue;
     }
 
