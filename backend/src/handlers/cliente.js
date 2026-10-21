@@ -108,15 +108,16 @@ async function mapCliente(row) {
       const erpCol = (fieldMap[field] !== undefined && fieldMap[field] !== null && fieldMap[field] !== '')
         ? fieldMap[field]
         : (defaultErp || 'Condicion_Pago');
-      const rawVal = row[erpCol] !== undefined ? row[erpCol] : row.Condicion_Pago;
-      const strVal = String(rawVal ?? '').trim().toUpperCase();
+      
+      const condicion = String(row.Condicion_Pago ?? row[erpCol] ?? '').trim().toUpperCase();
 
-      if (strVal === 'CRE') {
+      if (condicion === 'CRE' || condicion.startsWith('CRE')) {
         payload[field] = 1;
-      } else if (strVal === 'CONT') {
+      } else if (condicion === 'CONT' || condicion.startsWith('CONT')) {
         payload[field] = 0;
       } else {
-        payload[field] = (strVal === '1' || strVal === 'TRUE' || Number(strVal) > 0) ? 1 : 0;
+        const rawVal = String(row[erpCol] ?? '').trim();
+        payload[field] = (rawVal === '1' || rawVal === 'TRUE' || Number(rawVal) > 0) ? 1 : 0;
       }
       continue;
     }
