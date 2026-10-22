@@ -37,6 +37,7 @@ const PS_FIELDS_CABECERA = [
   { field: 'details_promo.0.order.PurchaseOrderNumber', type: 'erpColumn', required: false, label: 'Orden de Compra (Anidado Promo)' },
   { field: 'Currency',          type: 'erpColumn', required: false, label: 'Moneda (Currency - Asigna 1 si es MXN / 2 si es USD)', defaultErp: 'Moneda' },
   { field: 'CurrencyRate',      type: 'erpColumn', required: false, label: 'Tipo de Cambio (CurrencyRate / ExchangeRate)', defaultErp: 'Tipo_Cambio' },
+  { field: 'ContractorPercentage', type: 'erpColumn', required: false, label: 'Porcentaje Contratista (ContractorPercentage)', defaultErp: 'Aumento_Precio' },
   
   // Identificadores y datos anidados del Cliente
   { field: 'CustomerId.CustomerNumber', type: 'erpColumn', required: false, label: 'Cliente — CustomerNumber (Busca por IdGlobal en clientes para insertar ID local en la columna seleccionada)' },

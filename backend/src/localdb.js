@@ -98,6 +98,14 @@ async function migrate() {
       ON DUPLICATE KEY UPDATE erp_column = IF(erp_column IS NULL OR erp_column = '', 'e_mail', erp_column)
     `);
 
+    await conn.query(`
+      INSERT INTO field_mapping (entity, ps_field, erp_column)
+      VALUES 
+        ('pedido_cabecera', 'ContractorPercentage', 'Aumento_Precio'),
+        ('cotizacion_cabecera', 'ContractorPercentage', 'Aumento_Precio')
+      ON DUPLICATE KEY UPDATE erp_column = IF(erp_column IS NULL OR erp_column = '', 'Aumento_Precio', erp_column)
+    `);
+
     // Migration guards for instances created before multi-branch support
     try { await conn.query(`ALTER TABLE webhook_logs ADD COLUMN branch_id INT DEFAULT NULL`); } catch {}
     try { await conn.query(`ALTER TABLE webhook_logs ADD INDEX idx_branch (branch_id)`); } catch {}

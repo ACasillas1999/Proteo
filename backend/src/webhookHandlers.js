@@ -388,6 +388,19 @@ async function handleOrderInsert(data) {
           updateParams.push(calcTC);
         }
 
+        const rawContractorPct = getPath(data, 'ContractorPercentage')
+          ?? getPath(data, 'details_promo.0.order.ContractorPercentage')
+          ?? getPath(data, 'order.ContractorPercentage')
+          ?? getPath(data, 'details.0.order.ContractorPercentage');
+        if (rawContractorPct !== undefined) {
+          const calcContractorPct = (!isNaN(Number(rawContractorPct))) ? Number(rawContractorPct) : 0.0;
+          const realAumentoPrecioCol = cabCols.find(c => c.toLowerCase() === 'aumento_precio');
+          if (realAumentoPrecioCol) {
+            updates.push(`\`${realAumentoPrecioCol}\` = ?`);
+            updateParams.push(calcContractorPct);
+          }
+        }
+
         if (updates.length > 0) {
           updateParams.push(existingNoPedido);
           await query(`UPDATE \`${cabTable}\` SET ${updates.join(', ')} WHERE No_Pedido = ?`, updateParams);
@@ -497,6 +510,15 @@ async function handleOrderInsert(data) {
             if (cotTotCol && totalAmountVal > 0) {
               cotUpdates.push(`\`${cotTotCol}\` = ?`);
               cotUpdateParams.push(totalAmountVal);
+            }
+
+            if (rawContractorPct !== undefined) {
+              const calcContractorPct = (!isNaN(Number(rawContractorPct))) ? Number(rawContractorPct) : 0.0;
+              const cotAumentoCol = cotCabCols.find(c => c.toLowerCase() === 'aumento_precio');
+              if (cotAumentoCol) {
+                cotUpdates.push(`\`${cotAumentoCol}\` = ?`);
+                cotUpdateParams.push(calcContractorPct);
+              }
             }
 
             if (cotUpdates.length > 0) {
@@ -609,6 +631,11 @@ async function handleOrderInsert(data) {
         val = getPath(data, 'currency') ?? getPath(data, 'invoice.Currency') ?? getPath(data, 'invoice.currency');
       } else if (val === undefined && def.field === 'CurrencyRate') {
         val = getPath(data, 'currencyRate') ?? getPath(data, 'Currencyrate') ?? getPath(data, 'ExchangeRate') ?? getPath(data, 'exchangeRate') ?? getPath(data, 'invoice.CurrencyRate') ?? getPath(data, 'invoice.currencyRate');
+      } else if (val === undefined && def.field === 'ContractorPercentage') {
+        val = getPath(data, 'ContractorPercentage')
+          ?? getPath(data, 'details_promo.0.order.ContractorPercentage')
+          ?? getPath(data, 'order.ContractorPercentage')
+          ?? getPath(data, 'details.0.order.ContractorPercentage');
       }
 
       if (def.field === 'Currency') {
@@ -616,6 +643,8 @@ async function handleOrderInsert(data) {
         val = (strVal.includes('USD') || strVal.includes('US') || strVal === '2') ? 2 : 1;
       } else if (def.field === 'CurrencyRate') {
         val = (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) ? Number(val) : 1.0;
+      } else if (def.field === 'ContractorPercentage') {
+        val = (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) ? Number(val) : 0.0;
       }
 
       if (val === undefined) continue;
@@ -742,6 +771,7 @@ async function handleOrderInsert(data) {
     setIfColExists(headerPairsMap, cabCols, 'Fech_Captura', todayStr);
     setIfColExists(headerPairsMap, cabCols, 'Hora_Captura', timeStr);
     setIfColExists(headerPairsMap, cabCols, 'Asesor', branchName.substring(0, 6));
+    setIfColExists(headerPairsMap, cabCols, 'Aumento_Precio', 0.0);
     if (cabTable.toLowerCase() !== 'cbpedvta') {
       setIfColExists(headerPairsMap, cabCols, 'Proyecto', 'NA');
     } else {
@@ -909,12 +939,19 @@ async function handleOrderInsert(data) {
                   val = getPath(data, 'currency') ?? getPath(data, 'invoice.Currency') ?? getPath(data, 'invoice.currency');
                 } else if (val === undefined && def.field === 'CurrencyRate') {
                   val = getPath(data, 'currencyRate') ?? getPath(data, 'Currencyrate') ?? getPath(data, 'ExchangeRate') ?? getPath(data, 'exchangeRate') ?? getPath(data, 'invoice.CurrencyRate') ?? getPath(data, 'invoice.currencyRate');
+                } else if (val === undefined && def.field === 'ContractorPercentage') {
+                  val = getPath(data, 'ContractorPercentage')
+                    ?? getPath(data, 'details_promo.0.order.ContractorPercentage')
+                    ?? getPath(data, 'order.ContractorPercentage')
+                    ?? getPath(data, 'details.0.order.ContractorPercentage');
                 }
                 if (val === undefined) continue;
 
                 if (def.field === 'Currency' && val !== null && val !== undefined) {
                   const strVal = String(val).toUpperCase().trim();
                   val = (strVal.includes('USD') || strVal.includes('US') || strVal === '2') ? 2 : 1;
+                } else if (def.field === 'ContractorPercentage') {
+                  val = (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) ? Number(val) : 0.0;
                 }
 
                 if (['cond_pago', 'cont_pago', 'condicion_pago'].includes(realCol.toLowerCase()) && typeof val === 'string') {
