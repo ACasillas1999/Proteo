@@ -350,6 +350,11 @@ async function handleOrderInsert(data) {
       const totalAmountVal = Number(data.TotalAmount || 0);
       const calculatedSubtotal = Number(data.SubTotalAmount || (totalAmountVal > 0 ? totalAmountVal / 1.16 : 0));
 
+      const rawContractorPct = getPath(data, 'ContractorPercentage')
+        ?? getPath(data, 'details_promo.0.order.ContractorPercentage')
+        ?? getPath(data, 'order.ContractorPercentage')
+        ?? getPath(data, 'details.0.order.ContractorPercentage');
+
       // A. Actualizar totales y renglones en cbpedvta / dtpedvta (SOLO SI NO ES STATUS 11)
       if (statusIdNum !== 11 && detailsArr.length > 0) {
         const realSubtotalCol = cabCols.find(c => c.toLowerCase() === 'subtotal');
@@ -388,10 +393,6 @@ async function handleOrderInsert(data) {
           updateParams.push(calcTC);
         }
 
-        const rawContractorPct = getPath(data, 'ContractorPercentage')
-          ?? getPath(data, 'details_promo.0.order.ContractorPercentage')
-          ?? getPath(data, 'order.ContractorPercentage')
-          ?? getPath(data, 'details.0.order.ContractorPercentage');
         if (rawContractorPct !== undefined) {
           const calcContractorPct = (!isNaN(Number(rawContractorPct))) ? Number(rawContractorPct) : 0.0;
           const realAumentoPrecioCol = cabCols.find(c => c.toLowerCase() === 'aumento_precio');
@@ -473,8 +474,8 @@ async function handleOrderInsert(data) {
           if (realDistCol) {
             await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [0, existingNoPedido]);
           }
-        } else if (statusIdNum === 38) {
-          console.log(`[WEBHOOK] StatusId es 38. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
+        } else if (statusIdNum === 38 || statusIdNum === 42) {
+          console.log(`[WEBHOOK] StatusId es ${statusIdNum}. Actualizando 'Distribuido' a 1 en No_Pedido: ${existingNoPedido}`);
           const realDistCol = cabCols.find(c => c.toLowerCase() === 'distribuido');
           if (realDistCol) {
             await query(`UPDATE \`${cabTable}\` SET \`${realDistCol}\` = ? WHERE No_Pedido = ?`, [1, existingNoPedido]);
@@ -812,9 +813,9 @@ async function handleOrderInsert(data) {
       const todayStr = new Date().toISOString().split('T')[0];
       const timeStr = new Date().toTimeString().split(' ')[0];
 
-      // A. PROCESAR COTIZACIÓN (si StatusId es 11, 38 o 41)
+      // A. PROCESAR COTIZACIÓN (si StatusId es 11, 38, 41 o 42)
       let nextCotiza = null;
-      if (statusIdVal === 11 || statusIdVal === 38 || statusIdVal === 41) {
+      if (statusIdVal === 11 || statusIdVal === 38 || statusIdVal === 41 || statusIdVal === 42) {
         if (cotCabTable && (await tableExists(cotCabTable))) {
           // Verificar si ya existía en cbcot por IDPs
           const [cotExistingRows] = await connection.execute(
@@ -1144,15 +1145,15 @@ async function handleOrderInsert(data) {
         }
       }
 
-      // B. SI EL ESTATUS NO ES 38 NI 41: No crear pedido en cbpedvta
-      if (statusIdVal !== 38 && statusIdVal !== 41) {
-        console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / 41). No se crea registro en '${cabTable}'.`);
+      // B. SI EL ESTATUS NO ES 38, 41 NI 42: No crear pedido en cbpedvta
+      if (statusIdVal !== 38 && statusIdVal !== 41 && statusIdVal !== 42) {
+        console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / 41 / 42). No se crea registro en '${cabTable}'.`);
         await connection.commit();
         await saveWebhookLog('orders', orderNumber, data, 1, null);
         return;
       }
 
-      // C. PROCESAR Y CREAR PEDIDO (StatusId === 38 || StatusId === 41)
+      // C. PROCESAR Y CREAR PEDIDO (StatusId === 38 || StatusId === 41 || StatusId === 42)
       // Buscar si existe una Cotización previa para vincular No_Cotiza
       if (cotCabTable && (await tableExists(cotCabTable))) {
         try {
