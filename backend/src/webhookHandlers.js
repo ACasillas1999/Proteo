@@ -120,6 +120,7 @@ async function handleCustomerUpdate(key, data) {
       [customerNumber]
     );
     let updatedSomething = false;
+    let erpClienteId = customerNumber;
 
     if (clientRows.length === 0) {
       // INSERT — cliente nuevo
@@ -131,36 +132,40 @@ async function handleCustomerUpdate(key, data) {
         ? colValues
         : [customerNumber, ...colValues];
       const placeholders = insertCols.map(() => '?').join(', ');
-      await query(
+      const [insRes] = await query(
         `INSERT INTO clientes (${insertCols.join(', ')}) VALUES (${placeholders})`,
         insertVals
       );
-      console.log(`[WEBHOOK] Cliente creado en BD local (${lookupCol}: ${customerNumber})`);
+      if (insRes && insRes.insertId) erpClienteId = insRes.insertId;
+      console.log(`[WEBHOOK] Cliente creado en BD local (${lookupCol}: ${customerNumber}, Cliente: ${erpClienteId})`);
       updatedSomething = true;
     } else if (colNames.length > 0) {
+      erpClienteId = clientRows[0].Cliente ?? customerNumber;
       // UPDATE — cliente existente, filtrar lookupCol del SET (no actualizar el identificador)
       const updateCols = colNames.filter(c => c !== lookupCol);
       const updateVals = colValues.filter((_, i) => colNames[i] !== lookupCol);
       if (updateCols.length > 0) {
         const setClauses = updateCols.map(c => `${c} = ?`).join(', ');
         await query(`UPDATE clientes SET ${setClauses} WHERE ${lookupCol} = ?`, [...updateVals, customerNumber]);
-        console.log(`[WEBHOOK] Cliente actualizado en BD local (${lookupCol}: ${customerNumber})`);
+        console.log(`[WEBHOOK] Cliente actualizado en BD local (${lookupCol}: ${customerNumber}, Cliente: ${erpClienteId})`);
         updatedSomething = true;
       }
+    } else {
+      erpClienteId = clientRows[0].Cliente ?? customerNumber;
     }
 
     if (emailValue !== undefined) {
       await query(
         `INSERT INTO clientes_email (Clave_Cliente, e_mail) VALUES (?, ?) ON DUPLICATE KEY UPDATE e_mail = VALUES(e_mail)`,
-        [customerNumber, emailValue]
+        [erpClienteId, emailValue]
       );
       updatedSomething = true;
     }
 
     if (updatedSomething) {
       await query(
-        `UPDATE Cambios SET sincronizado = 1, fecha_sync = NOW() WHERE tabla = 'clientes' AND clave_registro = ? AND sincronizado = 0`,
-        [customerNumber]
+        `UPDATE Cambios SET sincronizado = 1, fecha_sync = NOW() WHERE tabla = 'clientes' AND clave_registro IN (?, ?) AND sincronizado = 0`,
+        [String(erpClienteId), String(customerNumber)]
       ).catch(() => {});
       await saveWebhookLog('cliente', customerNumber, data, 1, null);
     } else {
