@@ -1,18 +1,21 @@
 'use strict';
-const { query }          = require('../db');
-const ps                 = require('../powersales');
+const { query } = require('../db');
+const ps = require('../powersales');
 const { getFieldMapping, getConfig } = require('../localdb');
-const catalog            = require('../catalogCache');
+const catalog = require('../catalogCache');
 
 // Caché en memoria para evitar registrar las mismas listas de precios repetidamente
 const registeredPriceLists = new Set();
+// Caché nombre→ID de listas de precios (se puebla al consultar /pricelists)
+let priceListIdCache = {};
+let priceListIdCacheLoaded = false;
 
 /**
  * Lee el mapeo desde proteo_db (field_mapping + app_config).
  * Fallback: valores por defecto si la BD no tiene datos.
  */
 async function getMapeo() {
-  const fieldMap   = await getFieldMapping('articulo');
+  const fieldMap = await getFieldMapping('articulo');
   const categories = await getConfig('articulo_categories', {
     MAT: 1, SERV: 2, NLAG: 3, HALB: 4,
     HAWA: 5, FERT: 6, VERP: 7, ROH: 8,
@@ -33,52 +36,52 @@ async function getMapeo() {
  *   'categoryId' → se resuelve por mapa Clasificacion→Id
  */
 const PS_FIELDS = [
-  { field: 'SKU',             type: 'text',       required: true,  label: 'SKU / Código',           defaultErp: 'Clave_Articulo' },
-  { field: 'Name',            type: 'text',       required: true,  label: 'Nombre',                 defaultErp: 'Descripcion' },
-  { field: 'ShortName',       type: 'text',       required: true,  label: 'Nombre corto',           defaultErp: 'Descripcion' },
-  { field: 'Description',     type: 'text',       required: false, label: 'Descripción',            defaultErp: 'Descripcion' },
-  { field: 'DescriptionHTML', type: 'text',       required: false, label: 'Descripción HTML',       defaultErp: 'Descripcion' },
-  { field: 'Barcode',         type: 'text',       required: false, label: 'Código de barras 1',     defaultErp: null },
-  { field: 'BarCode2',        type: 'text',       required: false, label: 'Código de barras 2',     defaultErp: null },
-  { field: 'BarCode3',        type: 'text',       required: false, label: 'Código de barras 3',     defaultErp: null },
-  { field: 'Cost',            type: 'numStr',     required: true,  label: 'Costo',                  defaultErp: 'Costo_Ult_Compra' },
-  { field: 'IsActive',        type: 'boolean',    required: false, label: 'Activo',                 defaultErp: 'Habilitado' },
-  { field: 'UnitsPerBox',     type: 'number',     required: false, label: 'Unidades por caja',      defaultErp: null, fallbackValue: 1 },
-  { field: 'CasePerPallet',   type: 'number',     required: false, label: 'Cajas por palet',        defaultErp: null },
-  { field: 'ConversionFactor',type: 'number',     required: false, label: 'Factor de conversión',  defaultErp: 'Conversion' },
-  { field: 'ClaveSat',        type: 'text',       required: false, label: 'Clave SAT',             defaultErp: 'IDSAT' },
-  { field: 'ProductCode',     type: 'text',       required: false, label: 'Código de producto',    defaultErp: 'Clave_Articulo' },
-  { field: 'LoyaltyPct',      type: 'numStr',     required: false, label: '% Lealtad',             defaultErp: null },
+  { field: 'SKU', type: 'text', required: true, label: 'SKU / Código', defaultErp: 'Clave_Articulo' },
+  { field: 'Name', type: 'text', required: true, label: 'Nombre', defaultErp: 'Descripcion' },
+  { field: 'ShortName', type: 'text', required: true, label: 'Nombre corto', defaultErp: 'Descripcion' },
+  { field: 'Description', type: 'text', required: false, label: 'Descripción', defaultErp: 'Descripcion' },
+  { field: 'DescriptionHTML', type: 'text', required: false, label: 'Descripción HTML', defaultErp: 'Descripcion' },
+  { field: 'Barcode', type: 'text', required: false, label: 'Código de barras 1', defaultErp: null },
+  { field: 'BarCode2', type: 'text', required: false, label: 'Código de barras 2', defaultErp: null },
+  { field: 'BarCode3', type: 'text', required: false, label: 'Código de barras 3', defaultErp: null },
+  { field: 'Cost', type: 'numStr', required: true, label: 'Costo', defaultErp: 'Costo_Ult_Compra' },
+  { field: 'IsActive', type: 'boolean', required: false, label: 'Activo', defaultErp: 'Habilitado' },
+  { field: 'UnitsPerBox', type: 'number', required: false, label: 'Unidades por caja', defaultErp: null, fallbackValue: 1 },
+  { field: 'CasePerPallet', type: 'number', required: false, label: 'Cajas por palet', defaultErp: null },
+  { field: 'ConversionFactor', type: 'number', required: false, label: 'Factor de conversión', defaultErp: 'Conversion' },
+  { field: 'ClaveSat', type: 'text', required: false, label: 'Clave SAT', defaultErp: 'IDSAT' },
+  { field: 'ProductCode', type: 'text', required: false, label: 'Código de producto', defaultErp: 'Clave_Articulo' },
+  { field: 'LoyaltyPct', type: 'numStr', required: false, label: '% Lealtad', defaultErp: null },
   // Campos de catálogo — PS acepta strings: BrandNumber, CategoryNumber, LineNumber
-  { field: 'BrandId',       type: 'skuPrefix',  required: true,  label: 'ID Marca (BrandNumber)',      prefixLen: 5 },
-  { field: 'SubBrandId',    type: 'fixedId',    required: true,  label: 'ID Sub-marca',                defaultFixed: null, asInteger: true },
-  { field: 'LineId',        type: 'erpColumn',  required: true,  label: 'ID Línea (LineNumber)',        defaultErp: 'Linea', fallbackValue: '9999' },
-  { field: 'BranchId',      type: 'fixedId',    required: true,  label: 'ID Sucursal',                 defaultFixed: process.env.PS_BRANCH_ID || '1', asInteger: true },
-  { field: 'CategoryId',    type: 'erpColumn',  required: true,  label: 'ID Categoría (CategoryNumber)', defaultErp: 'Clasificacion', fallbackValue: '9999' },
-  { field: 'SubCategoryId', type: 'erpColumn',  required: true,  label: 'ID Sub-categoría',            defaultErp: null },
+  { field: 'BrandId', type: 'skuPrefix', required: true, label: 'ID Marca (BrandNumber)', prefixLen: 5 },
+  { field: 'SubBrandId', type: 'fixedId', required: true, label: 'ID Sub-marca', defaultFixed: null, asInteger: true },
+  { field: 'LineId', type: 'erpColumn', required: true, label: 'ID Línea (LineNumber)', defaultErp: 'Linea', fallbackValue: '9999' },
+  { field: 'BranchId', type: 'fixedId', required: true, label: 'ID Sucursal', defaultFixed: process.env.PS_BRANCH_ID || '1', asInteger: true },
+  { field: 'CategoryId', type: 'erpColumn', required: true, label: 'ID Categoría (CategoryNumber)', defaultErp: 'Clasificacion', fallbackValue: '9999' },
+  { field: 'SubCategoryId', type: 'erpColumn', required: true, label: 'ID Sub-categoría', defaultErp: null },
   // Mapeables o null si sin mapear
-  { field: 'ProductType',   type: 'text',       required: false, label: 'Tipo de producto',            defaultErp: null, fallbackValue: 'P' },
-  { field: 'IsPMRequired',  type: 'boolean',    required: false, label: 'PM requerido',                defaultErp: null },
-  { field: 'IsDecimal',     type: 'boolean',    required: false, label: 'Es decimal',                  defaultErp: null },
+  { field: 'ProductType', type: 'text', required: false, label: 'Tipo de producto', defaultErp: null, fallbackValue: 'P' },
+  { field: 'IsPMRequired', type: 'boolean', required: false, label: 'PM requerido', defaultErp: null },
+  { field: 'IsDecimal', type: 'boolean', required: false, label: 'Es decimal', defaultErp: null },
   // Listas de precios (no van a /products, sino a /pricelistsdetails)
-  { field: 'PL_Precio_Lista',    type: 'priceList',  required: false, label: 'Precio_Lista (Lista 1)',     defaultErp: 'Precio_Lista',    listName: 'Precio_Lista' },
-  { field: 'PL_Precio_Venta',    type: 'priceList',  required: false, label: 'Precio_Venta (Lista 2)',     defaultErp: 'Precio_Venta',    listName: 'Precio_Venta' },
-  { field: 'PL_Precio_Especial', type: 'priceList',  required: false, label: 'Precio_Especial (Lista 3)',  defaultErp: 'Precio_Especial', listName: 'Precio_Especial' },
-  { field: 'PL_Precio4',         type: 'priceList',  required: false, label: 'Precio4 (Lista 4)',          defaultErp: 'Precio4',         listName: 'Precio4' },
+  { field: 'PL_Precio_Lista', type: 'priceList', required: false, label: 'Precio_Lista (Lista 1)', defaultErp: 'Precio_Lista', listName: 'Precio_Lista' },
+  { field: 'PL_Precio_Venta', type: 'priceList', required: false, label: 'Precio_Venta (Lista 2)', defaultErp: 'Precio_Venta', listName: 'Precio_Venta' },
+  { field: 'PL_Precio_Especial', type: 'priceList', required: false, label: 'Precio_Especial (Lista 3)', defaultErp: 'Precio_Especial', listName: 'Precio_Especial' },
+  { field: 'PL_Precio4', type: 'priceList', required: false, label: 'Precio4 (Lista 4)', defaultErp: 'Precio4', listName: 'Precio4' },
   // Listas de descuentos (no van a /products, sino a /discountlistdetails)
-  { field: 'DL_Desc_Precio_Venta',   type: 'discountList',      listId: 1, required: false, label: 'Lista Descto 1 — Desc_Precio_Venta (% Venta)',    defaultErp: null },
-  { field: 'DL_Desc_Precio_Espec',   type: 'discountList',      listId: 2, required: false, label: 'Lista Descto 2 — Desc_Precio_Espec (% Especial)', defaultErp: null },
-  { field: 'DL_Desc_Precio4',        type: 'discountList',      listId: 3, required: false, label: 'Lista Descto 3 — Desc_Precio4 (% Lista 4)',         defaultErp: null },
-  { field: 'DL_Desc_Proveedor',      type: 'discountList',      listId: 4, required: false, label: 'Lista Descto 4 — Desc_Proveedor (% Gerente)',       defaultErp: null },
-  { field: 'DL_PorcentajeDescuento', type: 'discountList',      listId: 5, required: false, label: 'Lista Descto 5 — PorcentajeDescuento (% Pricing)',  defaultErp: null },
-  { field: 'DL_Encargado_Pricing',   type: 'discountListFixed', listId: 6, required: false, label: 'Lista Descto 6 — Encargado Pricing (100% Fijo)',    fixedValue: '100.00' },
+  { field: 'DL_Desc_Precio_Venta', type: 'discountList', listId: 1, required: false, label: 'Lista Descto 1 — Desc_Precio_Venta (% Venta)', defaultErp: null },
+  { field: 'DL_Desc_Precio_Espec', type: 'discountList', listId: 2, required: false, label: 'Lista Descto 2 — Desc_Precio_Espec (% Especial)', defaultErp: null },
+  { field: 'DL_Desc_Precio4', type: 'discountList', listId: 3, required: false, label: 'Lista Descto 3 — Desc_Precio4 (% Lista 4)', defaultErp: null },
+  { field: 'DL_Desc_Proveedor', type: 'discountList', listId: 4, required: false, label: 'Lista Descto 4 — Desc_Proveedor (% Gerente)', defaultErp: null },
+  { field: 'DL_PorcentajeDescuento', type: 'discountList', listId: 5, required: false, label: 'Lista Descto 5 — PorcentajeDescuento (% Pricing)', defaultErp: null },
+  { field: 'DL_Encargado_Pricing', type: 'discountListFixed', listId: 6, required: false, label: 'Lista Descto 6 — Encargado Pricing (100% Fijo)', fixedValue: '100.00' },
 ];
 
 async function mapArticulo(row) {
   const m = await getMapeo();
   const fieldMap = m.fieldMap ?? {};
   const clasificacion = (row.Clasificacion ?? '').trim().toUpperCase();
-  const categoryId    = (m.categories?.[clasificacion]) ?? m.defaultCategoryId ?? 1;
+  const categoryId = (m.categories?.[clasificacion]) ?? m.defaultCategoryId ?? 1;
 
   const payload = {};
   const priceListsMapped = {};
@@ -165,10 +168,10 @@ async function mapArticulo(row) {
         continue;
       }
       const raw = row[erpCol] ?? '';
-      if (type === 'number')       payload[field] = parseFloat(raw) || 0;
-      else if (type === 'numStr')  payload[field] = String(parseFloat(raw) || 0); // número como string
+      if (type === 'number') payload[field] = parseFloat(raw) || 0;
+      else if (type === 'numStr') payload[field] = String(parseFloat(raw) || 0); // número como string
       else if (type === 'boolean') payload[field] = raw ? 1 : 0;
-      else                          payload[field] = String(raw);
+      else payload[field] = String(raw);
     }
   }
 
@@ -188,7 +191,7 @@ async function sync(cambio) {
 
   const row = rows[0];
   const mapped = await mapArticulo(row);
-  
+
   // Compatibilidad con si alguien llama a mapArticulo esperando solo payload (aunque aquí usamos el objeto)
   const payload = mapped.payload ?? mapped;
   const priceListsMapped = mapped.priceListsMapped ?? {};
@@ -213,119 +216,139 @@ async function sync(cambio) {
     }
 
     // 2. Armar y enviar los detalles de precios para este artículo
+    // Construir mapa nombre→ID desde la respuesta de /pricelists o consultando /pricelists
     const costVal = parseFloat(row['Costo_Ult_Compra']) || 0;
     const pldData = Object.entries(priceListsMapped).map(([pl, priceVal]) => {
-      return {
-        ProductId: String(row['Clave_Articulo'] ?? ''),
-        PriceListId: pl,
-        Cost: String(costVal),
-        Price: String(priceVal),
-        IsActive: 1
-      };
-    });
-    await ps.post('/pricelistsdetails', { data: pldData });
-  }
+
+      // Intentar obtener los IDs numéricos de las listas desde PowerSales
+      if (!priceListIdCacheLoaded) {
+        try {
+          const plRes = await ps.get('/pricelists');
+          const plList = plRes.data?.data ?? plRes.data ?? [];
+          for (const pl of (Array.isArray(plList) ? plList : [])) {
+            if (pl.Name) priceListIdCache[pl.Name] = pl.Id ?? pl.id ?? pl.PriceListNumber ?? pl.Name;
+            if (pl.PriceListNumber) priceListIdCache[pl.PriceListNumber] = pl.Id ?? pl.id ?? pl.PriceListNumber;
+          }
+          priceListIdCacheLoaded = true;
+        } catch (plErr) {
+          console.warn('[SYNC ARTICULO] No se pudo obtener IDs de /pricelists, se usará el nombre como fallback:', plErr.message);
+        }
+      }
+
+      const pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
+        const resolvedId = priceListIdCache[plName] ?? plName; // ID numérico o nombre como fallback
+        return {
+          ProductId: String(row['Clave_Articulo'] ?? ''),
+          PriceListId: pl,
+          PriceListId: resolvedId,
+          Cost: String(costVal),
+          Price: String(priceVal),
+          IsActive: 1
+        };
+      });
+      await ps.post('/pricelistsdetails', { data: pldData });
+    }
 
   // 3. Armar y enviar los detalles de 6 listas de descuentos para este artículo
   const skuVal = String(row['Clave_Articulo'] ?? '').trim();
 
-  const getDiscVal = (fieldKey, defaultErpCol = null) => {
-    const erpCol = (fieldMapObj[fieldKey] !== undefined && fieldMapObj[fieldKey] !== null && fieldMapObj[fieldKey] !== '')
-      ? fieldMapObj[fieldKey]
-      : defaultErpCol;
+    const getDiscVal = (fieldKey, defaultErpCol = null) => {
+      const erpCol = (fieldMapObj[fieldKey] !== undefined && fieldMapObj[fieldKey] !== null && fieldMapObj[fieldKey] !== '')
+        ? fieldMapObj[fieldKey]
+        : defaultErpCol;
 
-    let rawVal = 0;
-    if (erpCol && row[erpCol] !== undefined && row[erpCol] !== null) {
-      rawVal = row[erpCol];
-    } else if (erpCol) {
-      const foundKey = Object.keys(row).find(k => k.toLowerCase() === String(erpCol).toLowerCase());
-      if (foundKey) rawVal = row[foundKey];
-    }
-    return (parseFloat(rawVal) || 0).toFixed(2);
-  };
+      let rawVal = 0;
+      if (erpCol && row[erpCol] !== undefined && row[erpCol] !== null) {
+        rawVal = row[erpCol];
+      } else if (erpCol) {
+        const foundKey = Object.keys(row).find(k => k.toLowerCase() === String(erpCol).toLowerCase());
+        if (foundKey) rawVal = row[foundKey];
+      }
+      return (parseFloat(rawVal) || 0).toFixed(2);
+    };
 
-  const discountDetailsData = [
-    {
-      DiscountListId: 1,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: getDiscVal('DL_Desc_Precio_Venta', null),
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    },
-    {
-      DiscountListId: 2,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: getDiscVal('DL_Desc_Precio_Espec', null),
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    },
-    {
-      DiscountListId: 3,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: getDiscVal('DL_Desc_Precio4', null),
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    },
-    {
-      DiscountListId: 4,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: getDiscVal('DL_Desc_Proveedor', null),
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    },
-    {
-      DiscountListId: 5,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: getDiscVal('DL_PorcentajeDescuento', null),
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    },
-    {
-      DiscountListId: 6,
-      ProductId: skuVal,
-      RangeMin: "1",
-      RangeMax: "9999",
-      Discount: "100.00",
-      DiscountAppliedTo: "1",
-      Type: "%",
-      IsActive: 1,
-      ExternalReference: "1"
-    }
-  ];
+    const discountDetailsData = [
+      {
+        DiscountListId: 1,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: getDiscVal('DL_Desc_Precio_Venta', null),
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      },
+      {
+        DiscountListId: 2,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: getDiscVal('DL_Desc_Precio_Espec', null),
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      },
+      {
+        DiscountListId: 3,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: getDiscVal('DL_Desc_Precio4', null),
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      },
+      {
+        DiscountListId: 4,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: getDiscVal('DL_Desc_Proveedor', null),
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      },
+      {
+        DiscountListId: 5,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: getDiscVal('DL_PorcentajeDescuento', null),
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      },
+      {
+        DiscountListId: 6,
+        ProductId: skuVal,
+        RangeMin: "1",
+        RangeMax: "9999",
+        Discount: "100.00",
+        DiscountAppliedTo: "1",
+        Type: "%",
+        IsActive: 1,
+        ExternalReference: "1"
+      }
+    ];
 
-  try {
-    await ps.post('/discountlistdetails', { data: discountDetailsData });
-    console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
-  } catch (discErr) {
     try {
-      await ps.post('/discountlistdetail', { data: discountDetailsData });
-      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
-    } catch (err2) {
-      console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
+      await ps.post('/discountlistdetails', { data: discountDetailsData });
+      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
+    } catch (discErr) {
+      try {
+        await ps.post('/discountlistdetail', { data: discountDetailsData });
+        console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
+      } catch (err2) {
+        console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
+      }
     }
+
+    return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
   }
 
-  return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
-}
-
-module.exports = { sync, mapArticulo, PS_FIELDS };
+  module.exports = { sync, mapArticulo, PS_FIELDS };
