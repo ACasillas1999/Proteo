@@ -31,18 +31,24 @@ async function sync(cambio) {
   let erpNoPedido = clave_registro;
   let employeeId = 3; // fallback por defecto
 
+  const isValidPsRef = (val) => {
+    if (val === null || val === undefined) return false;
+    const s = String(val).trim();
+    return s !== '' && s !== '0';
+  };
+
   if (orderRows.length > 0) {
     const row = orderRows[0];
     if (row.No_Pedido) {
       erpNoPedido = row.No_Pedido;
     }
-    if (erpIdCol && row[erpIdCol]) {
-      orderPsId = row[erpIdCol];
+    if (erpIdCol && isValidPsRef(row[erpIdCol])) {
+      orderPsId = String(row[erpIdCol]).trim();
     }
-    if (erpOrderNumCol && row[erpOrderNumCol]) {
-      orderNumberIpad = row[erpOrderNumCol];
-    } else if (row.IDPs) {
-      orderNumberIpad = row.IDPs;
+    if (erpOrderNumCol && isValidPsRef(row[erpOrderNumCol])) {
+      orderNumberIpad = String(row[erpOrderNumCol]).trim();
+    } else if (isValidPsRef(row.IDPs)) {
+      orderNumberIpad = String(row.IDPs).trim();
     }
     if (row.Cve_Atendio) {
       const parsedEmp = parseInt(row.Cve_Atendio, 10);
@@ -50,10 +56,6 @@ async function sync(cambio) {
         employeeId = parsedEmp;
       }
     }
-  }
-
-  if (!orderNumberIpad) {
-    orderNumberIpad = String(clave_registro);
   }
 
   // 3. Fallback a webhook_logs SOLO si orderPsId no se encontró en cbpedvta
@@ -71,12 +73,13 @@ async function sync(cambio) {
         const poNum = datosJson.order ? datosJson.order.PurchaseOrderNumber : datosJson.PurchaseOrderNumber;
         const repObj = datosJson.order ? datosJson.order.RepId : datosJson.RepId;
 
-        const matchByNum = orderNumberIpad && orderNum && (String(orderNum).trim() === String(orderNumberIpad).trim());
-        const matchByClave = (orderNum && String(orderNum).trim() === String(clave_registro).trim()) ||
-          (poNum && String(poNum).trim() === String(clave_registro).trim());
+        const matchByNum = isValidPsRef(orderNumberIpad) && isValidPsRef(orderNum) && (String(orderNum).trim() === String(orderNumberIpad).trim());
+        const matchByClave = (isValidPsRef(orderNum) && String(orderNum).trim() === String(clave_registro).trim()) ||
+          (isValidPsRef(poNum) && String(poNum).trim() === String(clave_registro).trim());
 
         if (matchByNum || matchByClave) {
-          if (orderId) orderPsId = orderId;
+          if (isValidPsRef(orderId)) orderPsId = orderId;
+          if (!isValidPsRef(orderNumberIpad) && isValidPsRef(orderNum)) orderNumberIpad = String(orderNum).trim();
           if (repObj && repObj.Id) employeeId = Number(repObj.Id);
           if (orderPsId) break;
         }
@@ -86,8 +89,24 @@ async function sync(cambio) {
     }
   }
 
+  // Si el pedido no tiene referencia de PowerSales (IDPs es '0', vacío o nulo), es un pedido local del ERP
+  if (!isValidPsRef(orderPsId) && !isValidPsRef(orderNumberIpad)) {
+    console.log(`[SYNC surtidopedido] Folio ${clave_registro} es un pedido local del ERP (IDPs=0/vacío). Marcando como Local.`);
+    return {
+      __isLocal: true,
+      reason: 'Pedido local del ERP (no originado en PowerSales)',
+      payload: {
+        Folio_ERP: erpNoPedido,
+        Estatus_Surtido: status,
+        Origen: 'ERP Local (IDPs = 0)'
+      }
+    };
+  }
+
+  if (!orderNumberIpad) {
+    orderNumberIpad = String(orderPsId);
+  }
   if (!orderPsId) {
-    // Si no se encontró un ID numérico de PS, usamos orderNumberIpad como fallback
     orderPsId = orderNumberIpad;
   }
 

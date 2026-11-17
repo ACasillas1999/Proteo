@@ -244,9 +244,9 @@ export default function BranchDashboard({ wsEvents = [] }) {
               </thead>
               <tbody>
                 {syncs.map(s => {
-                  const estadoLabel = s.sincronizado === 1 ? 'OK' : s.sincronizado === 2 ? 'Error' : 'Pendiente';
-                  const bg = s.sincronizado === 1 ? '#064e3b' : s.sincronizado === 2 ? '#450a0a' : '#431407';
-                  const fg = s.sincronizado === 1 ? '#34d399' : s.sincronizado === 2 ? '#f87171' : '#fb923c';
+                  const estadoLabel = s.sincronizado === 1 ? 'OK' : s.sincronizado === 2 ? 'Error' : s.sincronizado === 3 ? 'Local' : 'Pendiente';
+                  const bg = s.sincronizado === 1 ? '#064e3b' : s.sincronizado === 2 ? '#450a0a' : s.sincronizado === 3 ? '#1e293b' : '#431407';
+                  const fg = s.sincronizado === 1 ? '#34d399' : s.sincronizado === 2 ? '#f87171' : s.sincronizado === 3 ? '#94a3b8' : '#fb923c';
                   return (
                     <tr key={s.id} style={{ borderBottom: '1px solid #1f2937' }}>
                       <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{s.tabla}</td>

@@ -6,6 +6,7 @@ const ESTADO_MAP = {
   0: { label: 'Pendiente', cls: 'badge--orange' },
   1: { label: 'OK',        cls: 'badge--green' },
   2: { label: 'Error',     cls: 'badge--red' },
+  3: { label: 'Local',     cls: 'badge--gray' },
 };
 
 function fmtDate(d) {
@@ -89,6 +90,7 @@ export default function Auditoria() {
           <option value="0">Pendiente</option>
           <option value="1">OK</option>
           <option value="2">Error</option>
+          <option value="3">Local</option>
         </select>
 
         <button className="btn btn--ghost btn--sm" onClick={load}>🔄 Actualizar</button>

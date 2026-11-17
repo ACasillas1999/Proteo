@@ -48,7 +48,7 @@ async function markSynced(id) {
 
 /**
  * Marca un cambio con error (sincronizado=2).
- * NOTA: el schema original usa TINYINT(1) para 0/1, ampliamos a 2=error.
+ * NOTA: el schema original usa TINYINT(1) para 0/1, ampliamos a 2=error, 3=local.
  */
 async function markError(id, errorMsg) {
   const server = process.env.PS_BRANCH_ID ? `Sucursal ${process.env.PS_BRANCH_ID}` : 'Maestro';
@@ -58,4 +58,13 @@ async function markError(id, errorMsg) {
   );
 }
 
-module.exports = { getPool, query, markSynced, markError };
+/** Marca un cambio como local del ERP (sincronizado=3, no pertenece a PowerSales) */
+async function markLocal(id, note = 'Pedido local del ERP (sin IDPs)') {
+  const server = process.env.PS_BRANCH_ID ? `Sucursal ${process.env.PS_BRANCH_ID}` : 'Maestro';
+  await query(
+    'UPDATE Cambios SET sincronizado=3, error_sync=?, fecha_sync=NOW(), procesado_por=? WHERE id=?',
+    [String(note).substring(0, 1000), server, id]
+  );
+}
+
+module.exports = { getPool, query, markSynced, markError, markLocal };

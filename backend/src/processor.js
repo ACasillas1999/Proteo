@@ -1,5 +1,5 @@
 'use strict';
-const { query, markSynced, markError }      = require('./db');
+const { query, markSynced, markError, markLocal } = require('./db');
 const { saveSyncHistory }              = require('./localdb');
 const { broadcast }                    = require('./websocket');
 const config                           = require('./config');
@@ -115,16 +115,30 @@ async function processChange(cambioId) {
     return;
   }
 
-  const cfg       = config.get();
-  const t0        = Date.now();
-  let   lastError = null;
-  let   attempt   = 0;
+  const cfg         = config.get();
+  const maxAttempts = String(tabla).toLowerCase() === 'tipocamb' ? 1 : cfg.max_retries;
+  const t0          = Date.now();
+  let   lastError   = null;
+  let   attempt     = 0;
 
-  for (attempt = 1; attempt <= cfg.max_retries; attempt++) {
+  for (attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const payload = await handler.sync(cambio);
 
       const ms = Date.now() - t0;
+
+      // Si el handler indica que es un registro exclusivamente local del ERP (ej. pedido con IDPs=0)
+      if (payload && payload.__isLocal) {
+        await saveSyncHistory(cambio, 3, payload.reason || 'Registro local del ERP', attempt, payload.payload || null, ms).catch(e =>
+          console.error('[PROC] Error guardando historial local:', e.message)
+        );
+        await markLocal(cambioId, payload.reason || 'Registro local del ERP').catch(e =>
+          console.error('[PROC] Error marcando cambio remoto como local:', e.message)
+        );
+        console.log(`[PROC] 🏠 #${cambioId} (${tabla}/${clave_registro}) marcado como Local en ${ms}ms`);
+        broadcast('sync_ok', { id: cambioId, tabla, clave: clave_registro, ms, local: true });
+        return;
+      }
 
       // 3. Guardar OK en historial local (con payload enviado y latencia)
       await saveSyncHistory(cambio, 1, null, attempt, payload, ms).catch(e =>
@@ -153,7 +167,7 @@ async function processChange(cambioId) {
         broadcast('worker_status', { isOffline: true, cooldownEndAt: _lastTimeoutAt + OFFLINE_COOLDOWN_MS });
         throw new OfflineError(lastError);
       }
-      if (attempt < cfg.max_retries) {
+      if (attempt < maxAttempts) {
         const delay = cfg.retry_backoff_ms * attempt;
         console.warn(`[PROC] ✗ #${cambioId} intento ${attempt}: ${lastError}. Reintentando en ${delay}ms...`);
         await sleep(delay);
@@ -174,7 +188,7 @@ async function processChange(cambioId) {
     console.error('[PROC] Error marcando cambio remoto fallido:', e.message)
   );
 
-  console.error(`[PROC] ✗ #${cambioId} falló tras ${cfg.max_retries} intentos: ${lastError}`);
+  console.error(`[PROC] ✗ #${cambioId} falló tras ${maxAttempts} intento(s): ${lastError}`);
   broadcast('sync_error', { id: cambioId, tabla, clave: clave_registro, error: lastError, ms: msFailed });
 }
 
@@ -201,8 +215,8 @@ async function pollPendingChanges() {
   }, POLL_TIMEOUT_MS);
 
   try {
-    // Leer solo los pendientes (sincronizado = 0) del remoto
-    const [rows] = await query('SELECT id FROM Cambios WHERE sincronizado = 0 ORDER BY id ASC LIMIT 10');
+    // Leer solo los pendientes (sincronizado = 0) del remoto, dejando Tipocamb al final para no bloquear la cola
+    const [rows] = await query("SELECT id FROM Cambios WHERE sincronizado = 0 ORDER BY CASE WHEN LOWER(tabla) = 'tipocamb' THEN 1 ELSE 0 END ASC, id ASC LIMIT 10");
     // sincronizado: 0=pendiente, 1=ok, 2=error
     if (rows.length > 0) {
       console.log(`[POLLER] ${rows.length} registro(s) pendiente(s): ${rows.map(r => '#' + r.id).join(', ')}`);
