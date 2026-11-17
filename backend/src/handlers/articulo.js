@@ -2,7 +2,6 @@
 const { query } = require('../db');
 const ps = require('../powersales');
 const { getFieldMapping, getConfig } = require('../localdb');
-const catalog = require('../catalogCache');
 
 // Caché en memoria para evitar registrar las mismas listas de precios repetidamente
 const registeredPriceLists = new Set();
@@ -175,8 +174,12 @@ async function mapArticulo(row) {
     }
   }
 
-  // Sobrescribir CategoryId específico según la clasificación lógica original
-  payload['CategoryId'] = categoryId;
+  // Sobrescribir CategoryId solo si la clasificación está en el mapa de categorías o si quedó vacío
+  if (clasificacion && m.categories?.[clasificacion] !== undefined) {
+    payload['CategoryId'] = m.categories[clasificacion];
+  } else if (!payload['CategoryId']) {
+    payload['CategoryId'] = categoryId;
+  }
 
   return { payload, priceListsMapped, fieldMap: m.fieldMap };
 }
@@ -216,139 +219,135 @@ async function sync(cambio) {
     }
 
     // 2. Armar y enviar los detalles de precios para este artículo
-    // Construir mapa nombre→ID desde la respuesta de /pricelists o consultando /pricelists
-    const costVal = parseFloat(row['Costo_Ult_Compra']) || 0;
-    const pldData = Object.entries(priceListsMapped).map(([pl, priceVal]) => {
-
-      // Intentar obtener los IDs numéricos de las listas desde PowerSales
-      if (!priceListIdCacheLoaded) {
-        try {
-          const plRes = await ps.get('/pricelists');
-          const plList = plRes.data?.data ?? plRes.data ?? [];
-          for (const pl of (Array.isArray(plList) ? plList : [])) {
-            if (pl.Name) priceListIdCache[pl.Name] = pl.Id ?? pl.id ?? pl.PriceListNumber ?? pl.Name;
-            if (pl.PriceListNumber) priceListIdCache[pl.PriceListNumber] = pl.Id ?? pl.id ?? pl.PriceListNumber;
-          }
-          priceListIdCacheLoaded = true;
-        } catch (plErr) {
-          console.warn('[SYNC ARTICULO] No se pudo obtener IDs de /pricelists, se usará el nombre como fallback:', plErr.message);
+    // Intentar obtener los IDs numéricos de las listas desde PowerSales
+    if (!priceListIdCacheLoaded) {
+      try {
+        const plRes = await ps.get('/pricelists');
+        const plList = plRes.data?.data ?? plRes.data ?? [];
+        for (const pl of (Array.isArray(plList) ? plList : [])) {
+          if (pl.Name) priceListIdCache[pl.Name] = pl.Id ?? pl.id ?? pl.PriceListNumber ?? pl.Name;
+          if (pl.PriceListNumber) priceListIdCache[pl.PriceListNumber] = pl.Id ?? pl.id ?? pl.PriceListNumber;
         }
+        priceListIdCacheLoaded = true;
+      } catch (plErr) {
+        console.warn('[SYNC ARTICULO] No se pudo obtener IDs de /pricelists, se usará el nombre como fallback:', plErr.message);
       }
-
-      const pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
-        const resolvedId = priceListIdCache[plName] ?? plName; // ID numérico o nombre como fallback
-        return {
-          ProductId: String(row['Clave_Articulo'] ?? ''),
-          PriceListId: pl,
-          PriceListId: resolvedId,
-          Cost: String(costVal),
-          Price: String(priceVal),
-          IsActive: 1
-        };
-      });
-      await ps.post('/pricelistsdetails', { data: pldData });
     }
+
+    const costVal = parseFloat(payload.Cost ?? row['Costo_Ult_Compra']) || 0;
+    const pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
+      const resolvedId = priceListIdCache[plName] ?? plName; // ID numérico o nombre como fallback
+      return {
+        ProductId: String(row['Clave_Articulo'] ?? ''),
+        PriceListId: resolvedId,
+        Cost: String(costVal),
+        Price: String(priceVal),
+        IsActive: 1
+      };
+    });
+    await ps.post('/pricelistsdetails', { data: pldData });
+  }
 
   // 3. Armar y enviar los detalles de 6 listas de descuentos para este artículo
   const skuVal = String(row['Clave_Articulo'] ?? '').trim();
 
-    const getDiscVal = (fieldKey, defaultErpCol = null) => {
-      const erpCol = (fieldMapObj[fieldKey] !== undefined && fieldMapObj[fieldKey] !== null && fieldMapObj[fieldKey] !== '')
-        ? fieldMapObj[fieldKey]
-        : defaultErpCol;
+  const getDiscVal = (fieldKey, defaultErpCol = null) => {
+    const erpCol = (fieldMapObj[fieldKey] !== undefined && fieldMapObj[fieldKey] !== null && fieldMapObj[fieldKey] !== '')
+      ? fieldMapObj[fieldKey]
+      : defaultErpCol;
 
-      let rawVal = 0;
-      if (erpCol && row[erpCol] !== undefined && row[erpCol] !== null) {
-        rawVal = row[erpCol];
-      } else if (erpCol) {
-        const foundKey = Object.keys(row).find(k => k.toLowerCase() === String(erpCol).toLowerCase());
-        if (foundKey) rawVal = row[foundKey];
-      }
-      return (parseFloat(rawVal) || 0).toFixed(2);
-    };
-
-    const discountDetailsData = [
-      {
-        DiscountListId: 1,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: getDiscVal('DL_Desc_Precio_Venta', null),
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      },
-      {
-        DiscountListId: 2,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: getDiscVal('DL_Desc_Precio_Espec', null),
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      },
-      {
-        DiscountListId: 3,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: getDiscVal('DL_Desc_Precio4', null),
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      },
-      {
-        DiscountListId: 4,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: getDiscVal('DL_Desc_Proveedor', null),
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      },
-      {
-        DiscountListId: 5,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: getDiscVal('DL_PorcentajeDescuento', null),
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      },
-      {
-        DiscountListId: 6,
-        ProductId: skuVal,
-        RangeMin: "1",
-        RangeMax: "9999",
-        Discount: "100.00",
-        DiscountAppliedTo: "1",
-        Type: "%",
-        IsActive: 1,
-        ExternalReference: "1"
-      }
-    ];
-
-    try {
-      await ps.post('/discountlistdetails', { data: discountDetailsData });
-      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
-    } catch (discErr) {
-      try {
-        await ps.post('/discountlistdetail', { data: discountDetailsData });
-        console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
-      } catch (err2) {
-        console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
-      }
+    let rawVal = 0;
+    if (erpCol && row[erpCol] !== undefined && row[erpCol] !== null) {
+      rawVal = row[erpCol];
+    } else if (erpCol) {
+      const foundKey = Object.keys(row).find(k => k.toLowerCase() === String(erpCol).toLowerCase());
+      if (foundKey) rawVal = row[foundKey];
     }
+    return (parseFloat(rawVal) || 0).toFixed(2);
+  };
 
-    return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
+  const discountDetailsData = [
+    {
+      DiscountListId: 1,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio_Venta', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 2,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio_Espec', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 3,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Precio4', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 4,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_Desc_Proveedor', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 5,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: getDiscVal('DL_PorcentajeDescuento', null),
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    },
+    {
+      DiscountListId: 6,
+      ProductId: skuVal,
+      RangeMin: "1",
+      RangeMax: "9999",
+      Discount: "100.00",
+      DiscountAppliedTo: "1",
+      Type: "%",
+      IsActive: 1,
+      ExternalReference: "1"
+    }
+  ];
+
+  try {
+    await ps.post('/discountlistdetails', { data: discountDetailsData });
+    console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
+  } catch (discErr) {
+    try {
+      await ps.post('/discountlistdetail', { data: discountDetailsData });
+      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
+    } catch (err2) {
+      console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
+    }
   }
 
-  module.exports = { sync, mapArticulo, PS_FIELDS };
+  return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
+}
+
+module.exports = { sync, mapArticulo, PS_FIELDS };
