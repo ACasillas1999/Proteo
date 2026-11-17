@@ -48,8 +48,9 @@ class OfflineError extends Error {
 
 function isOfflineError(err) {
   const msg = (err.message || '').toLowerCase();
+  if (msg.includes('lock wait timeout')) return false;
   return (
-    msg.includes('timeout') ||
+    msg.includes('timeout of') ||
     msg.includes('network error') ||
     msg.includes('econnrefused') ||
     msg.includes('etimedout') ||
