@@ -27,6 +27,7 @@ const PS_FIELDS = [
   { field: 'Name',                      type: 'text',      required: true,  label: 'Nombre / Razón Social',       defaultErp: 'Razon_Social' },
   { field: 'Email',                     type: 'erpColumn', required: false, label: 'Email',                       defaultErp: 'e_mail' },
   { field: 'InvoiceName',              type: 'text',      required: false, label: 'Razón Social (Facturación)',  defaultErp: 'Razon_Social' },
+  { field: 'InvoiceAddress',           type: 'text',      required: false, label: 'Dirección Facturación (CP)',  defaultErp: 'Cod_Postal' },
   { field: 'TIN',                       type: 'text',      required: false, label: 'RFC / Tax ID',                defaultErp: 'RFC' },
   { field: 'TaxRegimeCatalogId',        type: 'text',      required: false, label: 'Régimen Fiscal (SAT)',        defaultErp: 'RegimenFiscal' },
 
@@ -101,6 +102,16 @@ async function mapCliente(row) {
       if (exterior) address += ` ${exterior}`;
       if (interior) address += ` Int. ${interior}`;
       payload[field] = address.trim() || null;
+      continue;
+    }
+
+    if (field === 'InvoiceAddress') {
+      const erpCol = (fieldMap[field] !== undefined && fieldMap[field] !== null && fieldMap[field] !== '')
+        ? fieldMap[field]
+        : (defaultErp || 'Cod_Postal');
+      const rawCp = row[erpCol] !== undefined ? row[erpCol] : row.Cod_Postal;
+      const cp = String(rawCp ?? '').trim();
+      payload[field] = (cp !== '' && cp !== '0') ? cp : '';
       continue;
     }
 

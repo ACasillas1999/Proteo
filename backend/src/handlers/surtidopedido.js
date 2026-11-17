@@ -13,7 +13,7 @@ async function sync(cambio) {
   }
 
   // 1. Obtener la tabla de cabecera y el mapeo de campos dinámicos
-  const cabTable = await getConfig('pedido_cabecera_table', 'cbpedvta');
+  const cabTable = (await getConfig('pedido_cabecera_table', 'cbpedvta')) || 'cbpedvta';
   const fieldMap = await getFieldMapping('pedido_cabecera');
 
   // Buscar qué columnas del ERP están mapeadas para 'Id' y 'OrderNumber'
@@ -100,7 +100,7 @@ async function sync(cambio) {
   }
 
   // 5. Obtener las partidas del pedido directamente desde dtpedvta
-  const detTable = await getConfig('pedido_detalle_table', 'dtpedvta');
+  const detTable = (await getConfig('pedido_detalle_table', 'dtpedvta')) || 'dtpedvta';
   const fieldMapDet = await getFieldMapping('pedido_detalle');
 
   const skuCol = fieldMapDet['ProductId'] || 'Cve_Articulo';
