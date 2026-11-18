@@ -4,9 +4,14 @@ const ps = require('../powersales');
 const { getFieldMapping, getConfig } = require('../localdb');
 
 // Caché en memoria para evitar registrar las mismas listas de precios repetidamente
-const registeredPriceLists = new Set();
+const registeredPriceLists = new Set(['Precio_Lista', 'Precio_Venta', 'Precio_Especial', 'Precio4']);
 // Caché nombre→ID de listas de precios (se puebla al consultar /pricelists)
-let priceListIdCache = {};
+let priceListIdCache = {
+  Precio_Lista: 1,
+  Precio_Venta: 2,
+  Precio_Especial: 3,
+  Precio4: 4,
+};
 let priceListIdCacheLoaded = false;
 
 /**
@@ -203,37 +208,48 @@ async function sync(cambio) {
   // PowerSales solo acepta POST para crear/actualizar productos
   await ps.post('/products', { data: [payload] });
 
-  // 1. Armar y enviar el catálogo de listas de precios (headers) - Optimizado con caché en memoria
+  // 1. Obtener IDs numéricos de las listas de precios desde PowerSales (/pricelists)
   const priceListsNames = Object.keys(priceListsMapped);
   if (priceListsNames.length > 0) {
-    const priceListsToRegister = priceListsNames.filter(pl => !registeredPriceLists.has(pl));
-    if (priceListsToRegister.length > 0) {
-      const plData = priceListsToRegister.map(pl => ({
-        Name: pl,
-        IsActive: 1,
-        IsDefault: 0,
-        PriceListNumber: pl
-      }));
-      await ps.post('/pricelists', { data: plData });
-      priceListsToRegister.forEach(pl => registeredPriceLists.add(pl));
-    }
-
-    // 2. Armar y enviar los detalles de precios para este artículo
-    // Intentar obtener los IDs numéricos de las listas desde PowerSales
     if (!priceListIdCacheLoaded) {
       try {
         const plRes = await ps.get('/pricelists');
         const plList = plRes.data?.data ?? plRes.data ?? [];
         for (const pl of (Array.isArray(plList) ? plList : [])) {
-          if (pl.Name) priceListIdCache[pl.Name] = pl.Id ?? pl.id ?? pl.PriceListNumber ?? pl.Name;
-          if (pl.PriceListNumber) priceListIdCache[pl.PriceListNumber] = pl.Id ?? pl.id ?? pl.PriceListNumber;
+          if (pl.Name) {
+            priceListIdCache[pl.Name] = pl.Id ?? pl.id ?? pl.PriceListNumber ?? pl.Name;
+            registeredPriceLists.add(pl.Name);
+          }
+          if (pl.PriceListNumber) {
+            priceListIdCache[pl.PriceListNumber] = pl.Id ?? pl.id ?? pl.PriceListNumber;
+            registeredPriceLists.add(pl.PriceListNumber);
+          }
         }
         priceListIdCacheLoaded = true;
       } catch (plErr) {
-        console.warn('[SYNC ARTICULO] No se pudo obtener IDs de /pricelists, se usará el nombre como fallback:', plErr.message);
+        console.warn('[SYNC ARTICULO] No se pudo obtener IDs de /pricelists, se usará caché por defecto:', plErr.message);
       }
     }
 
+    // Solo intentar registrar listas que no existan aún en PowerSales
+    const priceListsToRegister = priceListsNames.filter(pl => !registeredPriceLists.has(pl));
+    if (priceListsToRegister.length > 0) {
+      try {
+        const plData = priceListsToRegister.map((pl, idx) => ({
+          PriceListId: priceListIdCache[pl] ?? (idx + 1),
+          Name: pl,
+          IsActive: 1,
+          IsDefault: 0,
+          PriceListNumber: pl
+        }));
+        await ps.post('/pricelists', { data: plData });
+        priceListsToRegister.forEach(pl => registeredPriceLists.add(pl));
+      } catch (regErr) {
+        console.warn('[SYNC ARTICULO] Aviso al registrar /pricelists (continuando con /pricelistsdetails):', regErr.message);
+      }
+    }
+
+    // 2. Armar y enviar los detalles de precios para este artículo
     const costVal = parseFloat(payload.Cost ?? row['Costo_Ult_Compra']) || 0;
     const pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
       const resolvedId = priceListIdCache[plName] ?? plName; // ID numérico o nombre como fallback
@@ -336,12 +352,12 @@ async function sync(cambio) {
   ];
 
   try {
-    await ps.post('/discountlistdetails', { data: discountDetailsData });
-    console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente a PowerSales para el SKU: ${skuVal}`);
+    await ps.post('/discountlistdetail', { data: discountDetailsData });
+    console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
   } catch (discErr) {
     try {
-      await ps.post('/discountlistdetail', { data: discountDetailsData });
-      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetail) para el SKU: ${skuVal}`);
+      await ps.post('/discountlistdetails', { data: discountDetailsData });
+      console.log(`[SYNC ARTICULO] 6 Listas de Descuentos enviadas exitosamente (/discountlistdetails) para el SKU: ${skuVal}`);
     } catch (err2) {
       console.error('[SYNC ARTICULO] Error al enviar listas de descuentos a PowerSales:', discErr.message);
     }
