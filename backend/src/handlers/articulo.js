@@ -209,6 +209,7 @@ async function sync(cambio) {
   await ps.post('/products', { data: [payload] });
 
   // 1. Obtener IDs numéricos de las listas de precios desde PowerSales (/pricelists)
+  let pldData = [];
   const priceListsNames = Object.keys(priceListsMapped);
   if (priceListsNames.length > 0) {
     if (!priceListIdCacheLoaded) {
@@ -251,7 +252,7 @@ async function sync(cambio) {
 
     // 2. Armar y enviar los detalles de precios para este artículo
     const costVal = parseFloat(payload.Cost ?? row['Costo_Ult_Compra']) || 0;
-    const pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
+    pldData = Object.entries(priceListsMapped).map(([plName, priceVal]) => {
       const resolvedId = priceListIdCache[plName] ?? plName; // ID numérico o nombre como fallback
       return {
         ProductId: String(row['Clave_Articulo'] ?? ''),
@@ -363,7 +364,11 @@ async function sync(cambio) {
     }
   }
 
-  return { product: payload, priceListsDetails: mapped.priceListsMapped, discountListsDetails: discountDetailsData };
+  return {
+    'POST /products': { data: [payload] },
+    'POST /pricelistsdetails': { data: pldData },
+    'POST /discountlistdetail': { data: discountDetailsData }
+  };
 }
 
 module.exports = { sync, mapArticulo, PS_FIELDS };
