@@ -283,6 +283,12 @@ async function sync(cambio) {
     return (parseFloat(rawVal) || 0).toFixed(2);
   };
 
+  // Lista 4 (Desc_Proveedor): aplicar fórmula 100 - ((100 - Desc_Proveedor) / (100 - 3)) * 100
+  const rawDescProv = parseFloat(getDiscVal('DL_Desc_Proveedor', 'Desc_Proveedor')) || 0;
+  const calcDescProv = rawDescProv > 0
+    ? (100 - ((100 - rawDescProv) / (100 - 3)) * 100).toFixed(2)
+    : '0.00';
+
   const discountDetailsData = [
     {
       DiscountListId: 1,
@@ -322,7 +328,7 @@ async function sync(cambio) {
       ProductId: skuVal,
       RangeMin: "1",
       RangeMax: "9999",
-      Discount: getDiscVal('DL_Desc_Proveedor', 'Desc_Proveedor'),
+      Discount: calcDescProv,
       DiscountAppliedTo: "1",
       Type: "%",
       IsActive: 1,
