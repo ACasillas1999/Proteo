@@ -42,6 +42,20 @@ function formatSyncDate(d) {
   }
 }
 
+function getUploadPriorityBadge(tabla, prioridad) {
+  const t = String(tabla || '').toLowerCase();
+  const p = Number(prioridad) || (
+    (t === 'surtidopedido' || t === 'clientes') ? 1 :
+    t === 'articuloalm' ? 2 :
+    t === 'tipocamb' ? 3 :
+    t === 'articulo' ? 4 : 2
+  );
+  if (p === 1) return { label: '⚡ P1 · Urgente', bg: '#064e3b', color: '#34d399' };
+  if (p === 2) return { label: '🚀 P2 · Alta',    bg: '#0c4a6e', color: '#38bdf8' };
+  if (p === 3) return { label: '💱 P3 · Media',   bg: '#2e1065', color: '#c4b5fd' };
+  return { label: '📦 P4 · Masivo', bg: '#1e293b', color: '#94a3b8' };
+}
+
 function getWebhookShortBadge(row) {
   let d = null;
   try {
@@ -276,30 +290,37 @@ export default function BranchDashboard({ wsEvents = [] }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: 16 }}>
         {/* Últimos envíos ERP -> PowerSales */}
         <div className="card">
-          <div className="section-title" style={{ marginBottom: 12 }}>Últimos envíos del ERP (Subida)</div>
+          <div className="section-title" style={{ marginBottom: 12 }}>Cola y Envíos del ERP (Orden de Subida)</div>
           {syncs.length === 0 ? (
             <p style={{ color: '#6b7280', fontSize: 13 }}>Sin envíos registrados aún.</p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
+                  <th style={{ padding: '6px 10px' }}>Prioridad</th>
                   <th style={{ padding: '6px 10px' }}>Entidad</th>
                   <th style={{ padding: '6px 10px' }}>Clave</th>
                   <th style={{ padding: '6px 10px' }}>Estado</th>
-                  <th style={{ padding: '6px 10px' }}>Fecha sync</th>
+                  <th style={{ padding: '6px 10px' }}>Fecha</th>
                 </tr>
               </thead>
               <tbody>
                 {syncs.map(s => {
-                  const estadoLabel = s.sincronizado === 1 ? 'OK' : s.sincronizado === 2 ? 'Error' : s.sincronizado === 3 ? 'Local' : 'Pendiente';
+                  const estadoLabel = s.sincronizado === 1 ? 'OK' : s.sincronizado === 2 ? 'Error' : s.sincronizado === 3 ? 'Local' : '⏳ Por subir';
                   const bg = s.sincronizado === 1 ? '#064e3b' : s.sincronizado === 2 ? '#450a0a' : s.sincronizado === 3 ? '#1e293b' : '#431407';
                   const fg = s.sincronizado === 1 ? '#34d399' : s.sincronizado === 2 ? '#f87171' : s.sincronizado === 3 ? '#94a3b8' : '#fb923c';
+                  const prio = getUploadPriorityBadge(s.tabla, s.prioridad);
                   return (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                    <tr key={s.id} style={{ borderBottom: '1px solid #1f2937', background: s.sincronizado === 0 ? 'rgba(251, 146, 60, 0.05)' : undefined }}>
+                      <td style={{ padding: '7px 10px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: prio.bg, color: prio.color, whiteSpace: 'nowrap' }}>
+                          {prio.label}
+                        </span>
+                      </td>
                       <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{s.tabla}</td>
                       <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{s.clave_registro}</td>
                       <td style={{ padding: '7px 10px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bg, color: fg }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: bg, color: fg, whiteSpace: 'nowrap' }}>
                           {estadoLabel}
                         </span>
                       </td>

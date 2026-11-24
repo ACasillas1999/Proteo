@@ -3,17 +3,25 @@ const router  = require('express').Router();
 const { query } = require('../src/db');
 const { processChange } = require('../src/processor');
 
-// GET /api/cambios?tabla=&sincronizado=&page=&limit=
+// Expresión SQL de prioridad de subida (1 = más alta, 4 = más baja)
+const PRIORITY_SQL = `CASE
+  WHEN LOWER(tabla) IN ('surtidopedido', 'clientes') THEN 1
+  WHEN LOWER(tabla) = 'articuloalm' THEN 2
+  WHEN LOWER(tabla) = 'tipocamb' THEN 3
+  WHEN LOWER(tabla) = 'articulo' THEN 4
+  ELSE 2
+END`;
+
+// GET /api/cambios?tabla=&sincronizado=&sort=&page=&limit=
 router.get('/', async (req, res) => {
   try {
-    const { tabla, sincronizado, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+    const { tabla, sincronizado, sort = 'priority', page = 1, limit = 50 } = req.query;
 
     let where  = 'WHERE 1=1';
     const params = [];
 
     if (tabla) {
-      where += ' AND tabla = ?';
+      where += ' AND LOWER(tabla) = LOWER(?)';
       params.push(tabla);
     }
     if (sincronizado !== undefined && sincronizado !== '') {
@@ -26,8 +34,23 @@ router.get('/', async (req, res) => {
     const limitVal  = Math.max(1, parseInt(limit)  || 50);
     const offsetVal = Math.max(0, (Math.max(1, parseInt(page)) - 1) * limitVal);
 
+    // Ordenamiento:
+    // - 'priority' (por defecto):
+    //     1º Los pendientes de subir (sincronizado = 0) hasta arriba
+    //     2º Ordenados por prioridad de subida (1: surtidopedido/clientes, 2: articuloalm, 3: tipocamb, 4: articulo) y id ASC
+    //     3º Abajo los ya procesados, del más reciente al más antiguo
+    // - 'recent': orden cronológico tradicional (más recientes primero)
+    const orderBySql = sort === 'recent'
+      ? `ORDER BY COALESCE(fecha_sync, fecha_cambio) DESC, id DESC`
+      : `ORDER BY
+           CASE WHEN sincronizado = 0 THEN 0 ELSE 1 END ASC,
+           CASE WHEN sincronizado = 0 THEN (${PRIORITY_SQL}) ELSE 99 END ASC,
+           CASE WHEN sincronizado = 0 THEN id ELSE 0 END ASC,
+           COALESCE(fecha_sync, fecha_cambio) DESC,
+           id DESC`;
+
     const [rows] = await query(
-      `SELECT * FROM Cambios ${where} ORDER BY fecha_cambio DESC LIMIT ${limitVal} OFFSET ${offsetVal}`,
+      `SELECT *, (${PRIORITY_SQL}) AS prioridad FROM Cambios ${where} ${orderBySql} LIMIT ${limitVal} OFFSET ${offsetVal}`,
       params
     );
     const [[{ total }]] = await query(
