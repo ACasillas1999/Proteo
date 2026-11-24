@@ -86,6 +86,24 @@ async function sendHeartbeat(lastPollId) {
   }).catch(() => {}); // heartbeat falla silencioso
 }
 
+const POLL_TIMEOUT_MS  = 120_000; // Guardián de seguridad: libera _isPolling si una vuelta tarda más de 120s
+
+function getWebhookOperationTag(entidad, data) {
+  if (entidad === 'articulo') return '[ACTUALIZACIÓN ARTÍCULO]';
+  if (entidad === 'cliente')  return '[CREAR/ACTUALIZAR CLIENTE]';
+  if (entidad === 'orders') {
+    const sId = parseInt(data?.StatusId);
+    const sName = String(data?.StatusName || '').toUpperCase().trim();
+    if (sId === 11) return '[SOLO COTIZACIÓN -> cbcot/dtcot (StatusId 11)]';
+    if (sId === 41) return '[PEDIDO + COTIZACIÓN -> cbpedvta (Distribuido=0, StatusId 41)]';
+    if (sId === 38 || sId === 42) return `[PEDIDO LIBERADO -> cbpedvta (Distribuido=1, StatusId ${sId})]`;
+    if (sId === 8 || sName.includes('CANCEL')) return '[CANCELACIÓN PEDIDO -> cbpedvta (Estatus=C, StatusId 8)]';
+    if (sId === 7 || sName === 'INVOICED') return '[FACTURADO SAT -> cbpedvta (Campos SAT, StatusId 7)]';
+    return `[OMITIDO EN PEDIDO -> StatusId ${sId} (${sName || 'N/A'})]`;
+  }
+  return `[${String(entidad).toUpperCase()}]`;
+}
+
 async function pollWebhooks() {
   if (_isPolling) return;
   _isPolling = true;
@@ -95,6 +113,12 @@ async function pollWebhooks() {
   const token      = process.env.PS_TOKEN;
 
   if (!centralUrl || !branchId) { _isPolling = false; return; }
+
+  // Guardián: si en 120s la vuelta no termina, liberar el lock para no congelar la descarga de webhooks
+  const safetyTimer = setTimeout(() => {
+    console.warn('[WEBHOOK POLLER] ⚠ Timeout de seguridad alcanzado (120s), liberando lock _isPolling.');
+    _isPolling = false;
+  }, POLL_TIMEOUT_MS);
 
   try {
     const lastId = await getConfig('last_webhook_id', 0);
@@ -113,6 +137,9 @@ async function pollWebhooks() {
 
       for (const rec of records) {
         const data = typeof rec.datos === 'string' ? JSON.parse(rec.datos) : rec.datos;
+        const opTag = getWebhookOperationTag(rec.entidad, data);
+        const displayKey = data?.OrderNumber || data?.SKU || data?.CustomerNumber || rec.clave_registro;
+        console.log(`[WEBHOOK POLLER] 🏷️  #${rec.id} (${rec.entidad} / ${displayKey}) → ${opTag}`);
         try {
           const key = buildKey(rec.entidad, rec.clave_registro);
           if      (rec.entidad === 'articulo') await handleProductUpdate(key, data);
@@ -127,9 +154,10 @@ async function pollWebhooks() {
       }
 
       await setConfig('last_webhook_id', maxId);
-      await setConfig('last_poll_at', new Date().toISOString());
       broadcast('webhook_poll', { fetched: records.length, lastId: maxId });
     }
+
+    await setConfig('last_poll_at', new Date().toISOString());
 
     // Heartbeat after every poll cycle (even when no new records)
     await sendHeartbeat(maxId);
@@ -137,6 +165,7 @@ async function pollWebhooks() {
   } catch (err) {
     console.error('[WEBHOOK POLLER] Error al contactar maestro:', err.message);
   } finally {
+    clearTimeout(safetyTimer);
     _isPolling = false;
   }
 }
@@ -171,4 +200,4 @@ function stopWebhookPoller() {
   if (_mappingTimer)   { clearInterval(_mappingTimer);   _mappingTimer   = null; }
 }
 
-module.exports = { startWebhookPoller, stopWebhookPoller };
+module.exports = { startWebhookPoller, stopWebhookPoller, pollWebhooks, getWebhookOperationTag };

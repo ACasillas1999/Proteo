@@ -42,6 +42,28 @@ function formatSyncDate(d) {
   }
 }
 
+function getWebhookShortBadge(row) {
+  let d = null;
+  try {
+    d = typeof row.datos === 'string' ? JSON.parse(row.datos) : row.datos;
+  } catch { /* ignore */ }
+
+  if (row.entidad === 'articulo') return { label: '🏷️ Act. Artículo', bg: '#0c4a6e', color: '#38bdf8' };
+  if (row.entidad === 'cliente')  return { label: '👤 Cliente', bg: '#0c4a6e', color: '#38bdf8' };
+  if (row.entidad === 'orders') {
+    const sId = parseInt(d?.StatusId ?? d?.order?.StatusId);
+    const sName = String(d?.StatusName ?? d?.order?.StatusName ?? '').toUpperCase().trim();
+    if (sId === 11) return { label: '📝 Cotización', bg: '#2e1065', color: '#c4b5fd' };
+    if (sId === 41) return { label: '📦 Pedido (Dist:0)', bg: '#0c4a6e', color: '#38bdf8' };
+    if (sId === 38 || sId === 42) return { label: `📦 Pedido (Dist:1)`, bg: '#064e3b', color: '#34d399' };
+    if (sId === 8 || sName.includes('CANCEL')) return { label: '🚫 Cancelación', bg: '#450a0a', color: '#f87171' };
+    if (sId === 7 || sName === 'INVOICED') return { label: '🧾 Facturado SAT', bg: '#451a03', color: '#fbbf24' };
+    if (!isNaN(sId)) return { label: `⏭️ Omitido (St ${sId})`, bg: '#1e293b', color: '#94a3b8' };
+    return { label: '📦 Pedido', bg: '#0c4a6e', color: '#38bdf8' };
+  }
+  return { label: row.entidad || '—', bg: '#1e293b', color: '#94a3b8' };
+}
+
 export default function BranchDashboard({ wsEvents = [] }) {
   const { branchId } = useMode();
   const [logs,      setLogs]      = useState([]);
@@ -201,7 +223,32 @@ export default function BranchDashboard({ wsEvents = [] }) {
           ok={!!pollerOk}
           label={pollerOk ? 'Poller activo' : 'Poller inactivo'}
           sub={lastPoll ? `Último poll hace ${timeSince(lastPoll)}` : 'Sin polls aún'}
-        />
+        >
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                await axios.post('/api/webhooks/poll-now');
+                load();
+              } catch (err) {
+                console.error('Error forzando poll de webhooks:', err);
+              }
+            }}
+            style={{
+              background: '#0c4a6e',
+              color: '#38bdf8',
+              border: '1px solid #0369a1',
+              borderRadius: 6,
+              padding: '4px 10px',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Pollear ya ⚡
+          </button>
+        </StatusDot>
         <StatusDot
           ok={counts.error === 0 || counts.error == null}
           label={counts.error > 0 ? `${counts.error} errores pendientes` : 'Sin errores pendientes'}
@@ -278,29 +325,41 @@ export default function BranchDashboard({ wsEvents = [] }) {
                 <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
                   <th style={{ padding: '6px 10px' }}>Entidad</th>
                   <th style={{ padding: '6px 10px' }}>Clave</th>
+                  <th style={{ padding: '6px 10px' }}>Operación</th>
                   <th style={{ padding: '6px 10px' }}>Estado</th>
                   <th style={{ padding: '6px 10px' }}>Recibido</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map(l => (
-                  <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }}>
-                    <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{l.entidad}</td>
-                    <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{l.clave_registro}</td>
-                    <td style={{ padding: '7px 10px' }}>
-                      <span style={{
-                        padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                        background: l.estado === 1 ? '#064e3b' : '#450a0a',
-                        color:      l.estado === 1 ? '#34d399' : '#f87171',
-                      }}>
-                        {l.estado === 1 ? 'OK' : 'Error'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: 11 }}>
-                      {formatSyncDate(l.fecha_recepcion)}
-                    </td>
-                  </tr>
-                ))}
+                {logs.map(l => {
+                  const op = getWebhookShortBadge(l);
+                  return (
+                    <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }} title={l.error_msg || ''}>
+                      <td style={{ padding: '7px 10px', color: '#38bdf8' }}>{l.entidad}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 12 }}>{l.clave_registro}</td>
+                      <td style={{ padding: '7px 10px' }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                          background: op.bg, color: op.color, whiteSpace: 'nowrap'
+                        }}>
+                          {op.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '7px 10px' }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                          background: l.estado === 1 ? '#064e3b' : '#450a0a',
+                          color:      l.estado === 1 ? '#34d399' : '#f87171',
+                        }}>
+                          {l.estado === 1 ? 'OK' : 'Error'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: 11 }}>
+                        {formatSyncDate(l.fecha_recepcion)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

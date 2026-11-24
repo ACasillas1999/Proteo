@@ -69,7 +69,7 @@ async function handleProductUpdate(key, data) {
         [sku]
       ).catch(() => {});
       console.log(`[WEBHOOK] Producto actualizado exitosamente en BD local (SKU: ${sku})`);
-      await saveWebhookLog('articulo', sku, data, 1, null);
+      await saveWebhookLog('articulo', sku, data, 1, `[ACTUALIZACIÓN ARTÍCULO] SKU ${sku} actualizado en articulo`);
     } else {
       console.log(`[WEBHOOK] Producto no encontrado en BD local (SKU: ${sku})`);
       await saveWebhookLog('articulo', sku, data, 2, 'Producto no encontrado en BD local');
@@ -167,7 +167,10 @@ async function handleCustomerUpdate(key, data) {
         `UPDATE Cambios SET sincronizado = 1, fecha_sync = NOW() WHERE tabla = 'clientes' AND clave_registro IN (?, ?) AND sincronizado = 0`,
         [String(erpClienteId), String(customerNumber)]
       ).catch(() => {});
-      await saveWebhookLog('cliente', customerNumber, data, 1, null);
+      const cliAction = clientRows.length === 0
+        ? `[CLIENTE NUEVO] Creado en clientes (Cliente: ${erpClienteId})`
+        : `[ACTUALIZACIÓN CLIENTE] Actualizado en clientes (Cliente: ${erpClienteId})`;
+      await saveWebhookLog('cliente', customerNumber, data, 1, cliAction);
     } else {
       console.log(`[WEBHOOK] Ningún campo mapeado para actualizar en cliente (Cliente: ${customerNumber})`);
       await saveWebhookLog('cliente', customerNumber, data, 2, 'Ningún campo mapeado para actualizar');
@@ -489,9 +492,10 @@ async function handleOrderInsert(data) {
       }
 
       // Ejom: Submódulo especial para el estatus INVOICED
-      await handleInvoicedSubmodule(data, existingNoPedido, cabTable, cabCols);
+      const wasInvoiced = await handleInvoicedSubmodule(data, existingNoPedido, cabTable, cabCols);
 
       // C. Actualizar o refrescar Cotización en cbcot y dtcot (si aplica)
+      let refreshedCotiza = null;
       if (cotCabTable && (await tableExists(cotCabTable))) {
         try {
           const [cotExisting] = await query(
@@ -501,6 +505,7 @@ async function handleOrderInsert(data) {
 
           if (cotExisting.length > 0) {
             const existingNoCotiza = cotExisting[0].No_Cotiza;
+            refreshedCotiza = existingNoCotiza;
             console.log(`[WEBHOOK] Cotización existente encontrada en '${cotCabTable}' (No_Cotiza: ${existingNoCotiza}). Refrescando datos...`);
 
             const cotCabCols = await validColumns(cotCabTable);
@@ -587,7 +592,22 @@ async function handleOrderInsert(data) {
         }
       }
 
-      await saveWebhookLog('orders', orderNumber, data, 1, null);
+      let updLabel = `[ACTUALIZACIÓN PEDIDO] No_Pedido: ${existingNoPedido} (StatusId: ${statusIdNum})`;
+      if (statusIdNum === 8 || statusNameVal.includes('CANCEL')) {
+        updLabel = `[CANCELACIÓN] Pedido cancelado en ${cabTable} (No_Pedido: ${existingNoPedido}, Estatus: C)`;
+      } else if (statusIdNum === 7 || statusNameVal === 'INVOICED') {
+        updLabel = `[FACTURADO SAT] Datos SAT actualizados en ${cabTable} (No_Pedido: ${existingNoPedido})`;
+      } else if (statusIdNum === 41) {
+        updLabel = `[ACTUALIZACIÓN PEDIDO] ${cabTable} (No_Pedido: ${existingNoPedido}, Distribuido: 0)`;
+      } else if (statusIdNum === 38 || statusIdNum === 42) {
+        updLabel = `[ACTUALIZACIÓN PEDIDO] ${cabTable} (No_Pedido: ${existingNoPedido}, Distribuido: 1)`;
+      } else if (statusIdNum === 11 && refreshedCotiza) {
+        updLabel = `[ACTUALIZACIÓN COTIZACIÓN] ${cotCabTable} (No_Cotiza: ${refreshedCotiza}) — Pedido No_Pedido: ${existingNoPedido}`;
+      } else if (wasInvoiced) {
+        updLabel = `[FACTURADO SAT] Datos SAT actualizados en ${cabTable} (No_Pedido: ${existingNoPedido})`;
+      }
+
+      await saveWebhookLog('orders', orderNumber, data, 1, updLabel);
       return;
     }
 
@@ -1145,7 +1165,8 @@ async function handleOrderInsert(data) {
         // Finalizar aquí solo si es exclusivamente StatusId 11 (NO SE CREA PEDIDO)
         if (statusIdVal === 11) {
           await connection.commit();
-          await saveWebhookLog('orders', orderNumber, data, 1, null);
+          const cotLabel = `[SOLO COTIZACIÓN] Guardada en ${cotCabTable} (No_Cotiza: ${nextCotiza || 'N/A'}) — No crea Pedido (StatusId 11)`;
+          await saveWebhookLog('orders', orderNumber, data, 1, cotLabel);
           return;
         }
       }
@@ -1154,7 +1175,8 @@ async function handleOrderInsert(data) {
       if (statusIdVal !== 38 && statusIdVal !== 41 && statusIdVal !== 42) {
         console.log(`[WEBHOOK] StatusId es ${statusIdVal} (diferente de 38 / 41 / 42). No se crea registro en '${cabTable}'.`);
         await connection.commit();
-        await saveWebhookLog('orders', orderNumber, data, 1, null);
+        const skipLabel = `[OMITIDO] StatusId ${statusIdVal} (${statusNameVal || 'N/A'}) — No crea registro en ${cabTable}`;
+        await saveWebhookLog('orders', orderNumber, data, 1, skipLabel);
         return;
       }
 
@@ -1318,7 +1340,8 @@ async function handleOrderInsert(data) {
       const targetFolio = nextFolio || (insertResult && insertResult.insertId) || orderNumber;
       await handleInvoicedSubmodule(data, targetFolio, cabTable, cabCols);
 
-      await saveWebhookLog('orders', orderNumber, data, 1, null);
+      const newOrderLabel = `[PEDIDO NUEVO] Creado en ${cabTable} (No_Pedido: ${targetFolio}, Distribuido: ${initialDistVal})${nextCotiza ? ` + Cotización (No_Cotiza: ${nextCotiza})` : ''}`;
+      await saveWebhookLog('orders', orderNumber, data, 1, newOrderLabel);
     } catch (txErr) {
       await connection.rollback();
       throw txErr;

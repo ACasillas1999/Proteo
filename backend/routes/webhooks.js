@@ -3,6 +3,7 @@ const router = require('express').Router();
 const { saveWebhookLog: saveLogDb, localQuery } = require('../src/localdb');
 const { broadcast } = require('../src/websocket');
 const { authenticateWebhook } = require('../src/authMiddleware');
+const { pollWebhooks } = require('../src/webhookPoller');
 
 async function saveWebhookLog(entidad, clave_registro, datos, estado, error_msg = null, branch_id = null) {
   try {
@@ -48,6 +49,17 @@ router.get('/logs', async (req, res) => {
     res.json({ ok: true, data: rows, total: countRows[0].total });
   } catch (err) {
     console.error('[WEBHOOKS API] Error fetching logs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webhooks/poll-now — forzar descarga inmediata de webhooks pendientes desde central
+router.post('/poll-now', async (_req, res) => {
+  try {
+    await pollWebhooks();
+    res.json({ ok: true, message: 'Poll de webhooks ejecutado' });
+  } catch (err) {
+    console.error('[WEBHOOKS POLL-NOW] Error:', err);
     res.status(500).json({ error: err.message });
   }
 });

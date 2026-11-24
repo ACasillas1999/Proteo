@@ -8,6 +8,46 @@ const ESTADO_MAP = {
   2: { label: 'Error',     cls: 'badge--red'    },
 };
 
+function getWebhookOpBadge(row) {
+  let d = null;
+  try {
+    d = typeof row.datos === 'string' ? JSON.parse(row.datos) : row.datos;
+  } catch { /* ignore */ }
+
+  if (row.entidad === 'articulo') {
+    return { label: '🏷️ Actualizar Artículo', bg: 'rgba(56, 189, 248, 0.14)', color: '#38bdf8', detail: row.estado === 1 ? row.error_msg : null };
+  }
+  if (row.entidad === 'cliente') {
+    return { label: '👤 Crear/Act. Cliente', bg: 'rgba(56, 189, 248, 0.14)', color: '#38bdf8', detail: row.estado === 1 ? row.error_msg : null };
+  }
+  if (row.entidad === 'orders') {
+    const sId = parseInt(d?.StatusId ?? d?.order?.StatusId);
+    const sName = String(d?.StatusName ?? d?.order?.StatusName ?? '').toUpperCase().trim();
+    const detail = row.estado === 1 ? row.error_msg : null;
+
+    if (sId === 11) {
+      return { label: '📝 Solo Cotización (cbcot)', bg: 'rgba(167, 139, 250, 0.16)', color: '#c4b5fd', detail };
+    }
+    if (sId === 41) {
+      return { label: '📦 Pedido (Dist: 0)', bg: 'rgba(56, 189, 248, 0.16)', color: '#38bdf8', detail };
+    }
+    if (sId === 38 || sId === 42) {
+      return { label: `📦 Pedido Liberado (Dist: 1 · St ${sId})`, bg: 'rgba(16, 185, 129, 0.16)', color: '#34d399', detail };
+    }
+    if (sId === 8 || sName.includes('CANCEL')) {
+      return { label: '🚫 Cancelación (Estatus: C)', bg: 'rgba(248, 113, 113, 0.16)', color: '#f87171', detail };
+    }
+    if (sId === 7 || sName === 'INVOICED') {
+      return { label: '🧾 Facturado (Datos SAT)', bg: 'rgba(251, 191, 36, 0.16)', color: '#fbbf24', detail };
+    }
+    if (!isNaN(sId)) {
+      return { label: `⏭️ Omitido (Status ${sId} ${sName})`, bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', detail };
+    }
+    return { label: '📦 Pedido / Orden', bg: 'rgba(56, 189, 248, 0.14)', color: '#38bdf8', detail };
+  }
+  return { label: row.entidad || '—', bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', detail: null };
+}
+
 function fmtDate(d) {
   if (!d) return '—';
   let date;
@@ -95,12 +135,13 @@ export default function Webhooks({ wsEvents = [] }) {
       setConsoleLogs(prev => [newLog, ...prev].slice(0, 100));
       load();
     } else if (lastEvent.event === 'webhook_processed') {
-      const { entidad, clave_registro, estado, error_msg } = lastEvent.data || {};
+      const { entidad, clave_registro, estado, error_msg, datos } = lastEvent.data || {};
+      const opBadge = getWebhookOpBadge({ entidad, datos, estado, error_msg });
       let type = 'success';
-      let text = `✅ Procesado exitosamente: ${entidad} (${clave_registro})`;
+      let text = `✅ Procesado: ${entidad} (${clave_registro}) → [${opBadge.label}]${error_msg ? ` · ${error_msg}` : ''}`;
       if (estado === 2) {
         type = 'error';
-        text = `❌ Error al procesar: ${entidad} (${clave_registro}) - ${error_msg || 'Error desconocido'}`;
+        text = `❌ Error al procesar: ${entidad} (${clave_registro}) → [${opBadge.label}] - ${error_msg || 'Error desconocido'}`;
       }
       const newLog = {
         time: ts,
@@ -186,6 +227,7 @@ export default function Webhooks({ wsEvents = [] }) {
           onChange={e => { setFilters(f => ({ ...f, entidad: e.target.value })); setPage(1); }}
         >
           <option value="">Todas las entidades</option>
+          <option value="orders">orders (pedidos / cotizaciones)</option>
           <option value="articulo">articulo (products)</option>
           <option value="cliente">cliente (customers)</option>
         </select>
@@ -200,6 +242,21 @@ export default function Webhooks({ wsEvents = [] }) {
         </select>
 
         <button className="btn btn--ghost btn--sm" onClick={load}>🔄 Actualizar</button>
+        <button
+          className="btn btn--cyan btn--sm"
+          onClick={async () => {
+            try {
+              setLoading(true);
+              await axios.post('/api/webhooks/poll-now');
+              await load();
+            } catch {
+              setLoading(false);
+            }
+          }}
+          title="Descargar y procesar inmediatamente webhooks pendientes del servidor central"
+        >
+          ⚡ Forzar Poll Central
+        </button>
       </div>
 
       {/* Table */}
@@ -214,6 +271,7 @@ export default function Webhooks({ wsEvents = [] }) {
                   <th>#</th>
                   <th>Entidad</th>
                   <th>Clave</th>
+                  <th>Operación en Magic</th>
                   <th>Estado</th>
                   <th>Fecha recepción</th>
                   <th>Payload</th>
@@ -222,6 +280,7 @@ export default function Webhooks({ wsEvents = [] }) {
               <tbody>
                 {rows.map(r => {
                   const est = ESTADO_MAP[r.estado] || ESTADO_MAP[0];
+                  const op = getWebhookOpBadge(r);
                   const hasPayload = !!r.datos;
                   return (
                     <tr
@@ -233,6 +292,27 @@ export default function Webhooks({ wsEvents = [] }) {
                       <td style={{ color: 'var(--text-muted)' }}>#{r.id}</td>
                       <td><span className="badge badge--cyan">{r.entidad}</span></td>
                       <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.clave_registro}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '2px 10px',
+                            borderRadius: 100,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            background: op.bg,
+                            color: op.color,
+                          }}>
+                            {op.label}
+                          </span>
+                          {op.detail && (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {op.detail}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td><span className={`badge ${est.cls}`}>{est.label}</span></td>
                       <td style={{ color: 'var(--text-muted)' }}>{fmtDate(r.fecha_recepcion)}</td>
                       <td>
@@ -252,7 +332,7 @@ export default function Webhooks({ wsEvents = [] }) {
                   );
                 })}
                 {rows.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
                     Sin webhooks recibidos
                   </td></tr>
                 )}
@@ -279,6 +359,23 @@ export default function Webhooks({ wsEvents = [] }) {
           <>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
               <span className="badge badge--cyan">{modal.entidad}</span>
+              {(() => {
+                const op = getWebhookOpBadge(modal);
+                return (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '2px 10px',
+                    borderRadius: 100,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: op.bg,
+                    color: op.color,
+                  }}>
+                    {op.label}
+                  </span>
+                );
+              })()}
               <span className={`badge ${(ESTADO_MAP[modal.estado] || ESTADO_MAP[0]).cls}`}>
                 {(ESTADO_MAP[modal.estado] || ESTADO_MAP[0]).label}
               </span>
@@ -288,8 +385,13 @@ export default function Webhooks({ wsEvents = [] }) {
             </div>
 
             {modal.error_msg && (
-              <ModalField label="Error / Mensaje">
-                <pre style={{ color: 'var(--red)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <ModalField label={modal.estado === 1 ? 'Operación realizada en Magic' : 'Error / Mensaje'}>
+                <pre style={{
+                  color: modal.estado === 1 ? 'var(--green)' : 'var(--red)',
+                  fontSize: 12,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}>
                   {modal.error_msg}
                 </pre>
               </ModalField>
