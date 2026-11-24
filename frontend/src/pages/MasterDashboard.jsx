@@ -1,14 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import KpiCard  from '../components/KpiCard.jsx';
+import KpiCard from '../components/KpiCard.jsx';
 import LiveFeed from '../components/LiveFeed.jsx';
 
 function timeSince(dateStr) {
   if (!dateStr) return '—';
   const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (secs < 60)   return `hace ${secs}s`;
+  if (secs < 60) return `hace ${secs}s`;
   if (secs < 3600) return `hace ${Math.floor(secs / 60)}m`;
   return `hace ${Math.floor(secs / 3600)}h`;
+}
+
+function getPendingOpBadge(item) {
+  if (item.entidad === 'articulo') return { label: '🏷️ Actualizar Artículo', bg: '#0c4a6e', color: '#38bdf8' };
+  if (item.entidad === 'cliente') return { label: '👤 Crear/Act. Cliente', bg: '#0c4a6e', color: '#38bdf8' };
+  if (item.entidad === 'orders') {
+    const sId = parseInt(item.statusId);
+    const sName = String(item.statusName || '').toUpperCase().trim();
+    if (sId === 11) return { label: '📝 Solo Cotización (cbcot)', bg: '#2e1065', color: '#c4b5fd' };
+    if (sId === 41) return { label: '📦 Pedido (Dist: 0)', bg: '#0c4a6e', color: '#38bdf8' };
+    if (sId === 38 || sId === 42) return { label: `📦 Pedido Liberado (Dist: 1 · St ${sId})`, bg: '#064e3b', color: '#34d399' };
+    if (sId === 8 || sName.includes('CANCEL')) return { label: '🚫 Cancelación (Estatus: C)', bg: '#450a0a', color: '#f87171' };
+    if (sId === 7 || sName === 'INVOICED') return { label: '🧾 Facturado (Datos SAT)', bg: '#451a03', color: '#fbbf24' };
+    if (!isNaN(sId)) return { label: `⏭️ Omitido (St ${sId} ${sName})`, bg: '#1e293b', color: '#94a3b8' };
+    return { label: '📦 Pedido', bg: '#0c4a6e', color: '#38bdf8' };
+  }
+  return { label: item.entidad || '—', bg: '#1e293b', color: '#94a3b8' };
 }
 
 function StatusDot({ ok, label, sub }) {
@@ -33,13 +50,13 @@ function StatusDot({ ok, label, sub }) {
 }
 
 export default function MasterDashboard({ wsEvents = [] }) {
-  const [digest,  setDigest]  = useState([]);
-  const [status,  setStatus]  = useState(null);
-  const [feed,    setFeed]    = useState([]);
+  const [digest, setDigest] = useState([]);
+  const [status, setStatus] = useState(null);
+  const [feed, setFeed] = useState([]);
 
   const loadDigest = useCallback(() => {
-    axios.get('/api/branches/digest').then(r => setDigest(r.data.data ?? [])).catch(() => {});
-    axios.get('/api/status').then(r => setStatus(r.data)).catch(() => {});
+    axios.get('/api/branches/digest').then(r => setDigest(r.data.data ?? [])).catch(() => { });
+    axios.get('/api/status').then(r => setStatus(r.data)).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -56,30 +73,30 @@ export default function MasterDashboard({ wsEvents = [] }) {
 
     if (last.type === 'branch_heartbeat') {
       setFeed(prev => [{
-        ts:    new Date().toISOString(),
+        ts: new Date().toISOString(),
         label: `Branch ${last.branch_id}`,
-        msg:   `Heartbeat — ERP: ${last.erp_connected ? '✓' : '✗'} · Poll ID: ${last.last_poll_id ?? '—'} · Sync Hoy: OK: ${last.sync_ok}/Err: ${last.sync_error} · Webhook: OK: ${last.webhook_ok}/Err: ${last.webhook_error}`,
-        ok:    last.erp_connected,
+        msg: `Heartbeat — ERP: ${last.erp_connected ? '✓' : '✗'} · Poll ID: ${last.last_poll_id ?? '—'} · Sync Hoy: OK: ${last.sync_ok}/Err: ${last.sync_error} · Webhook: OK: ${last.webhook_ok}/Err: ${last.webhook_error}`,
+        ok: last.erp_connected,
       }, ...prev].slice(0, 150));
       loadDigest();
     }
     if (last.type === 'webhook_received') {
       setFeed(prev => [{
-        ts:    new Date().toISOString(),
+        ts: new Date().toISOString(),
         label: 'Maestro',
-        msg:   `Webhook recibido — ${last.entidad ?? '?'} · branch: ${last.branch_id ?? '?'}`,
-        ok:    true,
+        msg: `Webhook recibido — ${last.entidad ?? '?'} · branch: ${last.branch_id ?? '?'}`,
+        ok: true,
       }, ...prev].slice(0, 150));
     }
   }, [wsEvents, loadDigest]);
 
-  const onlineCount  = digest.filter(b => b.online).length;
+  const onlineCount = digest.filter(b => b.online).length;
   const offlineCount = digest.filter(b => !b.online).length;
   const totalPending = digest.reduce((s, b) => s + (b.pending_count ?? 0), 0);
-  const totals       = status?.counts || {};
-  const dbConnected  = status?.db === 'connected';
+  const totals = status?.counts || {};
+  const dbConnected = status?.db === 'connected';
   const binlogConnected = status?.worker?.binlog === 'connected';
-  const lastWebhook  = status?.worker?.lastWebhookAt;
+  const lastWebhook = status?.worker?.lastWebhookAt;
 
   return (
     <div>
@@ -106,10 +123,10 @@ export default function MasterDashboard({ wsEvents = [] }) {
 
       {/* KPIs */}
       <div className="kpi-grid">
-        <KpiCard label="Sucursales online"  value={onlineCount}    sub="conectadas"       variant="green"  delay={0}   />
-        <KpiCard label="Sucursales offline" value={offlineCount}   sub="sin heartbeat"    variant="red"    delay={80}  />
-        <KpiCard label="Webhooks pendientes"value={totalPending}   sub="sin jalar"        variant="orange" delay={160} />
-        <KpiCard label="Sync OK hoy"        value={totals.hoy}     sub="registros"        variant="cyan"   delay={240} />
+        <KpiCard label="Sucursales online" value={onlineCount} sub="conectadas" variant="green" delay={0} />
+        <KpiCard label="Sucursales offline" value={offlineCount} sub="sin heartbeat" variant="red" delay={80} />
+        <KpiCard label="Webhooks pendientes" value={totalPending} sub="sin jalar" variant="orange" delay={160} />
+        <KpiCard label="Sync OK hoy" value={totals.hoy} sub="registros" variant="cyan" delay={240} />
       </div>
 
       <div className="dash-grid">
@@ -142,7 +159,7 @@ export default function MasterDashboard({ wsEvents = [] }) {
                       <span style={{
                         padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
                         background: b.online ? '#064e3b' : '#1f2937',
-                        color:      b.online ? '#34d399' : '#6b7280',
+                        color: b.online ? '#34d399' : '#6b7280',
                       }}>
                         {b.online ? 'Online' : 'Offline'}
                       </span>
@@ -155,7 +172,12 @@ export default function MasterDashboard({ wsEvents = [] }) {
                     <td style={{ padding: '8px 10px', color: '#9ca3af', fontSize: 12 }}>#{b.last_poll_id ?? 0}</td>
                     <td style={{ padding: '8px 10px' }}>
                       {b.pending_count > 0 ? (
-                        <span style={{ color: '#fb923c', fontWeight: 700 }}>{b.pending_count}</span>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: '#431407', color: '#fb923c'
+                        }}>
+                          {b.pending_count} pendiente(s)
+                        </span>
                       ) : (
                         <span style={{ color: '#34d399' }}>0</span>
                       )}
@@ -175,6 +197,53 @@ export default function MasterDashboard({ wsEvents = [] }) {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {/* Lista detallada de Webhooks Pendientes por Jalar */}
+          {digest.some(b => (b.pending_items?.length ?? 0) > 0) && (
+            <div style={{ marginTop: 24, borderTop: '1px solid #374151', paddingTop: 16 }}>
+              <div className="section-title" style={{ marginBottom: 10, color: '#fb923c' }}>
+                ⏳ Detalle de Webhooks Pendientes por Jalar ({totalPending})
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#9ca3af', borderBottom: '1px solid #374151', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 8px' }}>ID</th>
+                    <th style={{ padding: '6px 8px' }}>Branch</th>
+                    <th style={{ padding: '6px 8px' }}>Entidad</th>
+                    <th style={{ padding: '6px 8px' }}>Folio / Clave</th>
+                    <th style={{ padding: '6px 8px' }}>Operación a Realizar</th>
+                    <th style={{ padding: '6px 8px' }}>Cliente</th>
+                    <th style={{ padding: '6px 8px' }}>Total</th>
+                    <th style={{ padding: '6px 8px' }}>Recibido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {digest.flatMap(b => (b.pending_items || []).map(item => ({ ...item, branch_id: b.branch_id }))).map(item => {
+                    const op = getPendingOpBadge(item);
+                    return (
+                      <tr key={`${item.branch_id}-${item.id}`} style={{ borderBottom: '1px solid #1f2937' }}>
+                        <td style={{ padding: '7px 8px', color: '#9ca3af' }}>#{item.id}</td>
+                        <td style={{ padding: '7px 8px', fontWeight: 700 }}>{item.branch_id}</td>
+                        <td style={{ padding: '7px 8px', color: '#38bdf8' }}>{item.entidad}</td>
+                        <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{item.clave}</td>
+                        <td style={{ padding: '7px 8px' }}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                            background: op.bg, color: op.color, whiteSpace: 'nowrap'
+                          }}>
+                            {op.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '7px 8px', color: '#d1d5db' }}>{item.customer || '—'}</td>
+                        <td style={{ padding: '7px 8px', fontFamily: 'monospace' }}>{item.total ? `$${item.total}` : '—'}</td>
+                        <td style={{ padding: '7px 8px', color: '#9ca3af' }}>{timeSince(item.fecha_recepcion)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 

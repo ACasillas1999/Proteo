@@ -52,12 +52,37 @@ router.get('/digest', async (_req, res) => {
 
     const data = await Promise.all(statuses.map(async s => {
       const [rows] = await localQuery(
-        'SELECT COUNT(*) as pending FROM webhook_logs WHERE branch_id = ? AND id > ?',
+        'SELECT COUNT(*) as pending FROM webhook_logs WHERE (branch_id = ? OR branch_id IS NULL) AND id > ?',
         [s.branch_id, s.last_poll_id || 0]
       );
+      const [pendingRows] = await localQuery(
+        'SELECT id, entidad, clave_registro, datos, fecha_recepcion FROM webhook_logs WHERE (branch_id = ? OR branch_id IS NULL) AND id > ? ORDER BY id ASC LIMIT 50',
+        [s.branch_id, s.last_poll_id || 0]
+      );
+      const pendingItems = pendingRows.map(r => {
+        let d = null;
+        try { d = typeof r.datos === 'string' ? JSON.parse(r.datos) : r.datos; } catch {}
+        const folio = d?.OrderNumber || d?.SKU || d?.CustomerNumber || r.clave_registro;
+        const statusId = d?.StatusId ?? d?.order?.StatusId ?? null;
+        const statusName = d?.StatusName ?? d?.order?.StatusName ?? null;
+        const total = d?.TotalAmount ?? d?.order?.TotalAmount ?? null;
+        const customer = d?.CustomerId?.Name || d?.CustomerId?.CustomerNumber || null;
+        return {
+          id: r.id,
+          entidad: r.entidad,
+          clave: folio,
+          statusId,
+          statusName,
+          total,
+          customer,
+          fecha_recepcion: r.fecha_recepcion,
+        };
+      });
+
       return {
         ...s,
         pending_count: rows[0].pending,
+        pending_items: pendingItems,
         online: s.last_seen_at ? (now - new Date(s.last_seen_at).getTime()) < 2 * 60 * 1000 : false,
       };
     }));

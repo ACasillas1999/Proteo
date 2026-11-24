@@ -1,6 +1,6 @@
 'use strict';
 const ZongJi    = require('zongji');
-const { processChange } = require('./processor');
+const { enqueueFromBinlog } = require('./processor');
 const { broadcast }     = require('./websocket');
 const config            = require('./config');
 
@@ -64,9 +64,7 @@ function startBinlog() {
         const id = row.id;
         if (!id) continue;
         console.log(`[BINLOG] INSERT Cambios #${id} — tabla: ${row.tabla}, clave: ${row.clave_registro}`);
-        processChange(id).catch(e =>
-          console.error(`[BINLOG→PROC] Error procesando #${id}:`, e.message)
-        );
+        enqueueFromBinlog(id, row.tabla);
       }
     });
 

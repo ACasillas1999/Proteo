@@ -64,6 +64,20 @@ function isOfflineError(err) {
 let _lastTimeoutAt = 0;
 const OFFLINE_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutos de pausa si la API externa está caída
 
+// Set de IDs actualmente en ejecución para evitar doble procesamiento entre Carril Rápido (binlog) y Poller
+const _inFlight = new Set();
+
+// Mapa de prioridades (menor número = mayor prioridad)
+// 1: surtidopedido, clientes | 2: articuloalm | 3: tipocamb | 4: articulo
+function getTablePriority(tabla) {
+  const t = String(tabla || '').toLowerCase();
+  if (t === 'surtidopedido' || t === 'clientes') return 1;
+  if (t === 'articuloalm') return 2;
+  if (t === 'tipocamb') return 3;
+  if (t === 'articulo') return 4;
+  return 2;
+}
+
 /**
  * Procesa un registro de Cambios por su ID.
  * Flujo:
@@ -77,6 +91,20 @@ async function processChange(cambioId) {
     console.log(`[PROC] Worker en pausa, omitiendo #${cambioId}`);
     return;
   }
+
+  if (_inFlight.has(cambioId)) {
+    return;
+  }
+  _inFlight.add(cambioId);
+
+  try {
+    return await _processChangeInner(cambioId);
+  } finally {
+    _inFlight.delete(cambioId);
+  }
+}
+
+async function _processChangeInner(cambioId) {
 
   // 1. Leer el cambio del ERP remoto
   let cambio;
@@ -195,6 +223,54 @@ async function processChange(cambioId) {
 let _pollerTimer = null;
 let _isPolling   = false;
 
+// Cola de Carril Rápido (para eventos prioritarios del Binlog: surtidopedido, clientes, articuloalm, tipocamb)
+// Concurrencia máxima = 2 para nunca saturar el pool de MySQL ni bloquear webhooks
+const FAST_LANE_CONCURRENCY = 2;
+const _fastLaneQueue = [];
+let _fastLaneActive = 0;
+
+function enqueueFromBinlog(id, tabla) {
+  const priority = getTablePriority(tabla);
+
+  // Si es 'articulo' (prioridad 4, carga masiva con 3 peticiones HTTP por SKU),
+  // NO saturamos con llamadas paralelas: despertamos al poller para que los procese en orden de fondo.
+  if (priority >= 4) {
+    pollPendingChanges().catch(() => {});
+    return;
+  }
+
+  // Carril rápido para prioridad 1 (surtidopedido/clientes), 2 (articuloalm) y 3 (tipocamb)
+  if (_inFlight.has(id) || _fastLaneQueue.some(item => item.id === id)) {
+    return;
+  }
+
+  _fastLaneQueue.push({ id, tabla, priority });
+  // Ordenar cola del carril rápido por prioridad y luego por ID
+  _fastLaneQueue.sort((a, b) => (a.priority - b.priority) || (a.id - b.id));
+  _drainFastLane();
+}
+
+function _drainFastLane() {
+  if (config.isPaused() || (Date.now() - _lastTimeoutAt < OFFLINE_COOLDOWN_MS)) return;
+
+  while (_fastLaneActive < FAST_LANE_CONCURRENCY && _fastLaneQueue.length > 0) {
+    const next = _fastLaneQueue.shift();
+    if (!next || _inFlight.has(next.id)) continue;
+
+    _fastLaneActive++;
+    processChange(next.id)
+      .catch(err => {
+        if (!(err instanceof OfflineError)) {
+          console.error(`[FAST-LANE] Error procesando #${next.id} (${next.tabla}):`, err.message);
+        }
+      })
+      .finally(() => {
+        _fastLaneActive--;
+        _drainFastLane();
+      });
+  }
+}
+
 // Timeout de seguridad: si una vuelta del poller tarda mas de este tiempo, se libera el lock
 const POLL_TIMEOUT_MS = 160_000;
 
@@ -214,15 +290,53 @@ async function pollPendingChanges() {
     _isPolling = false;
   }, POLL_TIMEOUT_MS);
 
+  let shouldRepollImmediately = false;
+
   try {
-    // Leer solo los pendientes (sincronizado = 0) del remoto, dejando Tipocamb al final para no bloquear la cola
-    const [rows] = await query("SELECT id FROM Cambios WHERE sincronizado = 0 ORDER BY CASE WHEN LOWER(tabla) = 'tipocamb' THEN 1 ELSE 0 END ASC, id ASC LIMIT 10");
+    // Orden de prioridad en cola:
+    // 1: surtidopedido, clientes (Urgente)
+    // 2: articuloalm (Existencias)
+    // 3: tipocamb (Tipo de cambio — mayor prioridad que articulo)
+    // 4: articulo (Carga masiva / Background)
+    const [rows] = await query(`
+      SELECT id, tabla FROM Cambios
+      WHERE sincronizado = 0
+      ORDER BY CASE
+        WHEN LOWER(tabla) IN ('surtidopedido', 'clientes') THEN 1
+        WHEN LOWER(tabla) = 'articuloalm' THEN 2
+        WHEN LOWER(tabla) = 'tipocamb' THEN 3
+        WHEN LOWER(tabla) = 'articulo' THEN 4
+        ELSE 2
+      END ASC, id ASC
+      LIMIT 10
+    `);
     // sincronizado: 0=pendiente, 1=ok, 2=error
     if (rows.length > 0) {
-      console.log(`[POLLER] ${rows.length} registro(s) pendiente(s): ${rows.map(r => '#' + r.id).join(', ')}`);
+      console.log(`[POLLER] ${rows.length} registro(s) pendiente(s): ${rows.map(r => `#${r.id}(${r.tabla})`).join(', ')}`);
     }
     for (const row of rows) {
       if (config.isPaused()) break;
+
+      // Si estamos procesando 'articulo' (prioridad 4) y entraron elementos urgentes al carril rápido
+      // o a la BD (prioridad 1..3), cedemos el turno inmediatamente para no hacer esperar al tráfico prioritario.
+      if (getTablePriority(row.tabla) >= 4) {
+        if (_fastLaneQueue.length > 0) {
+          console.log('[POLLER] ⚡ Cediendo lote de artículos para atender tráfico prioritario en Carril Rápido.');
+          shouldRepollImmediately = true;
+          break;
+        }
+        const [urgentRows] = await query(`
+          SELECT id FROM Cambios
+          WHERE sincronizado = 0 AND LOWER(tabla) != 'articulo'
+          LIMIT 1
+        `).catch(() => [[]]);
+        if (urgentRows.length > 0) {
+          console.log('[POLLER] ⚡ Detectado cambio prioritario en BD durante lote de artículos; reordenando cola.');
+          shouldRepollImmediately = true;
+          break;
+        }
+      }
+
       await processChange(row.id);
     }
   } catch (err) {
@@ -234,6 +348,9 @@ async function pollPendingChanges() {
   } finally {
     clearTimeout(safetyTimer);
     _isPolling = false;
+    if (shouldRepollImmediately && !config.isPaused()) {
+      setImmediate(() => pollPendingChanges().catch(() => {}));
+    }
   }
 }
 
@@ -266,4 +383,4 @@ function resetCooldown() {
   pollPendingChanges().catch(e => console.error('[PROC] Error en forzado:', e.message));
 }
 
-module.exports = { processChange, getStats, startPoller, stopPoller, isOffline, getCooldownEndAt, resetCooldown };
+module.exports = { processChange, enqueueFromBinlog, getStats, startPoller, stopPoller, isOffline, getCooldownEndAt, resetCooldown };
