@@ -59,6 +59,7 @@ const PS_FIELDS = [
   { field: 'PriceListNumber',         type: 'erpColumn', required: false, label: 'Número Lista de Precios',    defaultErp: null },
   { field: 'IsCredit',                type: 'boolean',   required: false, label: 'Tiene Crédito (CRE=1, CONT=0)', defaultErp: 'Condicion_Pago' },
   { field: 'CreditLimit',             type: 'numStr',    required: false, label: 'Límite de Crédito',          defaultErp: 'Limite_Credito' },
+  { field: 'CreditDays',              type: 'number',    required: false, label: 'Días de Crédito',            defaultErp: 'Dias_Credito' },
   { field: 'AccountBalance',          type: 'numStr',    required: false, label: 'Saldo de Cuenta',            defaultErp: 'Saldo_Actual' },
 
   // ── Flags ──

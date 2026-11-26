@@ -100,6 +100,12 @@ async function migrate() {
 
     await conn.query(`
       INSERT INTO field_mapping (entity, ps_field, erp_column)
+      VALUES ('cliente', 'CreditDays', 'Dias_Credito')
+      ON DUPLICATE KEY UPDATE erp_column = IF(erp_column IS NULL OR erp_column = '', 'Dias_Credito', erp_column)
+    `);
+
+    await conn.query(`
+      INSERT INTO field_mapping (entity, ps_field, erp_column)
       VALUES 
         ('pedido_cabecera', 'ContractorPercentage', 'Aumento_Precio'),
         ('cotizacion_cabecera', 'ContractorPercentage', 'Aumento_Precio')
