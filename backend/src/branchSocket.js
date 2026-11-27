@@ -65,9 +65,9 @@ function handleMessage(branchId, raw) {
     return;
   }
 
-  if (msg.type === 'query_inventory_result' && msg.reqId) {
+  if (msg.reqId && pending.has(msg.reqId)) {
     const p = pending.get(msg.reqId);
-    if (!p) return; // ya expiró o no es de este proceso
+    if (!p) return;
     clearTimeout(p.timer);
     pending.delete(msg.reqId);
     if (msg.ok) p.resolve(msg.data ?? []);
@@ -115,7 +115,7 @@ function isBranchOnline(branchId) {
   return !!ws && ws.readyState === WebSocket.OPEN;
 }
 
-function sendQuery(branchId, params, timeoutMs = 8000) {
+function sendRpc(branchId, type, params = {}, timeoutMs = 8000) {
   const ws = branches.get(Number(branchId));
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     return Promise.reject(Object.assign(new Error('branch_offline'), { code: 'branch_offline' }));
@@ -129,8 +129,35 @@ function sendQuery(branchId, params, timeoutMs = 8000) {
     }, timeoutMs);
 
     pending.set(reqId, { resolve, reject, timer, branchId: Number(branchId) });
-    ws.send(JSON.stringify({ type: 'query_inventory', reqId, params }));
+    ws.send(JSON.stringify({ type, reqId, params }));
   });
 }
 
-module.exports = { attach, sendQuery, isBranchOnline };
+function sendQuery(branchId, params, timeoutMs = 8000) {
+  return sendRpc(branchId, 'query_inventory', params, timeoutMs);
+}
+
+function sendOrdersMagicQuery(branchId, params, timeoutMs = 12000) {
+  return sendRpc(branchId, 'query_orders_magic', params, timeoutMs);
+}
+
+function sendTriggerPoll(branchId, timeoutMs = 15000) {
+  return sendRpc(branchId, 'trigger_webhook_poll', {}, timeoutMs);
+}
+
+function getOnlineBranchIds() {
+  const ids = [];
+  for (const [id, ws] of branches.entries()) {
+    if (ws && ws.readyState === WebSocket.OPEN) ids.push(id);
+  }
+  return ids;
+}
+
+module.exports = {
+  attach,
+  sendQuery,
+  sendOrdersMagicQuery,
+  sendTriggerPoll,
+  isBranchOnline,
+  getOnlineBranchIds,
+};

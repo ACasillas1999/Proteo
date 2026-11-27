@@ -22,8 +22,9 @@ const mapeoRouter         = require('./routes/mapeo');
 const syncHistoryRouter   = require('./routes/syncHistory');
 const webhooksRouter      = require('./routes/webhooks');
 const grupoascencioRouter = require('./routes/grupoascencio');
-const branchesRouter      = require('./routes/branches');
-const inventoryRouter     = require('./routes/inventory');
+const branchesRouter       = require('./routes/branches');
+const inventoryRouter      = require('./routes/inventory');
+const reconciliationRouter = require('./routes/reconciliation');
 
 const app = express();
 app.use(cors());
@@ -39,8 +40,9 @@ app.use('/api/mapeo',        mapeoRouter);         // GET/PUT /api/mapeo
 app.use('/api/sync-history', syncHistoryRouter);   // GET /api/sync-history
 app.use('/api/webhooks',     webhooksRouter);      // POST /api/webhooks/...
 app.use('/api/grupoascencio', grupoascencioRouter); // GET/POST /api/grupoascencio/pricelists...
-app.use('/api/branches',     branchesRouter);       // POST /api/branches/heartbeat, GET /status
-app.use('/api/inventory',    inventoryRouter);      // GET /api/inventory?branch_id=...
+app.use('/api/branches',       branchesRouter);       // POST /api/branches/heartbeat, GET /status
+app.use('/api/inventory',      inventoryRouter);      // GET /api/inventory?branch_id=...
+app.use('/api/reconciliation', reconciliationRouter); // GET /api/reconciliation/orders, POST /resync
 
 // Frontend estático (build de React)
 const frontendDist = path.join(__dirname, '../frontend/dist');

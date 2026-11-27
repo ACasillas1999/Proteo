@@ -135,6 +135,9 @@ router.post('/powersales/object-update', authenticateWebhook, async (req, res) =
       } else if (objType === 'customers' || objType === 'customer' || objType === 'clientes') {
         entidad = 'cliente';
         clave   = record.key.CustomerNumber || record.key.UniqueId || JSON.stringify(record.key);
+      } else if (objType === 'orders' || objType === 'order' || objType === 'pedidos') {
+        entidad = 'orders';
+        clave   = record.data?.OrderNumber || record.key?.OrderNumber || JSON.stringify(record.key);
       } else {
         entidad = objType;
         clave   = JSON.stringify(record.key);

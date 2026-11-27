@@ -7,13 +7,15 @@ import Mapeo          from './pages/Mapeo.jsx';
 import Payload        from './pages/Payload.jsx';
 import Webhooks       from './pages/Webhooks.jsx';
 import Sucursales     from './pages/Sucursales.jsx';
+import ConciliacionPedidos from './pages/ConciliacionPedidos.jsx';
 import WorkerStatus   from './components/WorkerStatus.jsx';
 import { useWebSocket }  from './hooks/useWebSocket.js';
 import { ModeProvider, useMode } from './context/ModeContext.jsx';
-import { Zap, ClipboardList, Map, Settings, SendHorizontal, Webhook, Building2 } from 'lucide-react';
+import { Zap, ClipboardList, Map, Settings, SendHorizontal, Webhook, Building2, GitCompare } from 'lucide-react';
 
 const NAV_MASTER = [
   { to: '/',              icon: Zap,            label: 'Dashboard' },
+  { to: '/conciliacion',  icon: GitCompare,     label: 'Conciliación PS' },
   { to: '/sucursales',    icon: Building2,      label: 'Sucursales' },
   { to: '/webhooks',      icon: Webhook,        label: 'Webhooks' },
   { to: '/mapeo',         icon: Map,            label: 'Mapeo' },
@@ -80,6 +82,7 @@ function AppShell() {
           <Route path="/auditoria"     element={<Auditoria />} />
           <Route path="/payloads"      element={<Payload />} />
           <Route path="/webhooks"      element={<Webhooks wsEvents={events} />} />
+          <Route path="/conciliacion"  element={<ConciliacionPedidos />} />
           <Route path="/mapeo"         element={<Mapeo />} />
           <Route path="/sucursales"    element={<Sucursales wsEvents={events} />} />
           <Route path="/configuracion" element={<Configuracion />} />
