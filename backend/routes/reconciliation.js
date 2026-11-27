@@ -682,10 +682,13 @@ router.get('/orders', async (req, res) => {
           }
         }
 
-        // Fallback a BD ERP local si el proceso tiene conexión directa a Magic
+        // Fallback a BD ERP local SOLO si realmente contiene datos de esta sucursal (o si corre en modo sucursal)
         try {
           const localData = await buildOrdersMagicData({ orderNumbers });
-          if (localData.erpConnected) {
+          const isBranchMode = Boolean(process.env.CENTRAL_URL);
+          const hasAnyMatch = Object.keys(localData.pedidos || {}).length > 0
+            || Object.keys(localData.cotizaciones || {}).length > 0;
+          if (localData.erpConnected && (isBranchMode || hasAnyMatch)) {
             magicByBranch.set(branchId, {
               ...localData,
               source: 'local_db',

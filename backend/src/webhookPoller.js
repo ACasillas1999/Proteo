@@ -5,6 +5,7 @@ const { query }                             = require('./db');
 const { getConfig, setConfig, saveWebhookLog, saveFieldMapping, getLocalSyncSummary } = require('./localdb');
 const { handleProductUpdate, handleCustomerUpdate, handleOrderInsert } = require('./webhookHandlers');
 const { broadcast }                         = require('./websocket');
+const { getCentralToken }                   = require('./authMiddleware');
 
 const POLL_INTERVAL_MS = 30_000;
 const MAPPING_SYNC_MS  = 24 * 60 * 60 * 1000; // 24h
@@ -33,7 +34,7 @@ function filterLocalFields(mapping) {
 async function syncMapping() {
   const centralUrl = process.env.CENTRAL_URL;
   const branchId   = parseInt(process.env.PS_BRANCH_ID);
-  const token      = process.env.PS_TOKEN;
+  const token      = getCentralToken();
   if (!centralUrl || !branchId) return;
 
   try {
@@ -62,7 +63,7 @@ async function syncMapping() {
 async function sendHeartbeat(lastPollId) {
   const centralUrl = process.env.CENTRAL_URL;
   const branchId   = parseInt(process.env.PS_BRANCH_ID);
-  const token      = process.env.PS_TOKEN;
+  const token      = getCentralToken();
   if (!centralUrl || !branchId) return;
 
   let erpConnected = 0;
@@ -110,7 +111,7 @@ async function pollWebhooks() {
 
   const centralUrl = process.env.CENTRAL_URL;
   const branchId   = parseInt(process.env.PS_BRANCH_ID);
-  const token      = process.env.PS_TOKEN;
+  const token      = getCentralToken();
 
   if (!centralUrl || !branchId) { _isPolling = false; return; }
 

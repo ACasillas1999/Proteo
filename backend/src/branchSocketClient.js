@@ -4,6 +4,7 @@ const { query } = require('./db');
 const { localQuery, getConfig, getFieldMapping } = require('./localdb');
 const { mapArticuloalm } = require('./handlers/articuloalm');
 const { pollWebhooks } = require('./webhookPoller');
+const { getCentralToken } = require('./authMiddleware');
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -243,9 +244,10 @@ function scheduleReconnect() {
 function connect() {
   const centralUrl = process.env.CENTRAL_URL;
   const branchId   = process.env.PS_BRANCH_ID;
-  const token      = process.env.PS_TOKEN;
+  const tokens     = Array.from(new Set([getCentralToken(), process.env.PS_TOKEN].filter(Boolean)));
+  const token      = tokens[attempt % tokens.length] || process.env.PS_TOKEN;
 
-  const url = `${toWsUrl(centralUrl)}/branch-ws?branch_id=${branchId}`;
+  const url = `${toWsUrl(centralUrl)}/branch-ws?branch_id=${branchId}&token=${encodeURIComponent(token)}`;
   ws = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
 
   ws.on('open', () => {
